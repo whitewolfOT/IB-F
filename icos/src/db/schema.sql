@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS events (
   asset_reference   TEXT NOT NULL,
   quantity          REAL NOT NULL,
   unit              TEXT NOT NULL,
-  created_by        TEXT NOT NULL REFERENCES parties(party_id),
+  created_by        TEXT NOT NULL,
   approval_state    TEXT NOT NULL DEFAULT 'draft',
   timestamp         TEXT NOT NULL
 );
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
   amount                REAL NOT NULL CHECK (amount > 0),
   currency              TEXT NOT NULL,
   asset_reference       TEXT NOT NULL,
-  created_by            TEXT NOT NULL,
+  created_by            TEXT NOT NULL,   -- audit field; parties table is optional
   approval_state        TEXT NOT NULL,
   audit_hash            TEXT NOT NULL,
   timestamp             TEXT NOT NULL
