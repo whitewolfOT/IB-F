@@ -57,6 +57,21 @@ describe('createLedgerEntry', () => {
     expect(() => createLedgerEntry({ ...baseParams, counterparties: [] }))
       .toThrow(LedgerConstraintError);
   });
+
+  it('throws when debit_account equals credit_account', () => {
+    expect(() => createLedgerEntry({ ...baseParams, debit_account: SubledgerType.receivables, credit_account: SubledgerType.receivables }))
+      .toThrow(LedgerConstraintError);
+  });
+
+  it('throws when amount is zero', () => {
+    expect(() => createLedgerEntry({ ...baseParams, amount: 0 }))
+      .toThrow(LedgerConstraintError);
+  });
+
+  it('throws when amount is negative', () => {
+    expect(() => createLedgerEntry({ ...baseParams, amount: -100 }))
+      .toThrow(LedgerConstraintError);
+  });
 });
 
 describe('postTransaction', () => {
