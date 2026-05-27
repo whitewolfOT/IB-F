@@ -43,6 +43,15 @@ export function eventsRouter(
     }
   });
 
+  router.get('/', (req: Request, res: Response) => {
+    try {
+      const contractId = typeof req.query.contract_id === 'string' ? req.query.contract_id : undefined;
+      res.json(events.list(contractId));
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   router.get('/:id', (req: Request, res: Response) => {
     try {
       res.json(events.get(String(req.params.id)));

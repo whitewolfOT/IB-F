@@ -4,6 +4,8 @@ import {
   RulingInput,
   updateShariahRuling,
   ComplianceFlag,
+  ShariahOverrideEvent,
+  createOverride,
 } from '../shariah';
 
 export class ShariahService {
@@ -59,5 +61,24 @@ export class ShariahService {
       block_profit_distribution: record.block_profit_distribution,
       compliance_flag: complianceFlag,
     };
+  }
+
+  applyOverride(reviewId: string, params: Omit<ShariahOverrideEvent, 'override_id' | 'timestamp'>): ShariahOverrideEvent {
+    const row = this.db.getShariahReview(reviewId);
+    if (!row) throw new Error(`Review not found: ${reviewId}`);
+
+    const override = createOverride(params);
+
+    this.db.insertShariahOverride({
+      override_id: override.override_id,
+      overridden_ruling_id: reviewId,
+      authorizing_entities: override.authorizing_entities,
+      justification: override.justification,
+      risk_acknowledgment: override.risk_acknowledgment,
+      expiration_conditions: override.expiration_conditions,
+      timestamp: override.timestamp,
+    });
+
+    return override;
   }
 }

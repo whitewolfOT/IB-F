@@ -409,5 +409,27 @@ describe('runPipeline - ijarah flow', () => {
     expect(result.ledgerEntries[0].credit_account).toBe('profit_distribution');
     expect(result.ledgerEntries[0].amount).toBe(800);
   });
+
+  it('returns leaseRevenueMetrics with earnedRevenue and unearnedLiability', () => {
+    const event = createEvent({
+      location: 'Dubai',
+      event_type: 'lease_activation',
+      counterparties: ['lessor-001', 'lessee-001'],
+      linked_contract_id: validIjarah.contract_id,
+      asset_reference: 'tractor-x300',
+      quantity: 800,
+      unit: 'USD',
+      supporting_documents: [],
+      created_by: 'user-001',
+    });
+    (event as { approval_state: ApprovalState }).approval_state = ApprovalState.approved;
+    const result = runPipeline(event, validIjarah, ijarahDescriptor);
+    expect(result.leaseRevenueMetrics).toBeDefined();
+    expect(result.leaseRevenueMetrics!.earnedRevenue).toBeGreaterThanOrEqual(0);
+    expect(result.leaseRevenueMetrics!.unearnedLiability).toBeGreaterThanOrEqual(0);
+    // leaseRevenue(800, 1, 800) → earned = 800, unearned = 0
+    expect(result.leaseRevenueMetrics!.earnedRevenue).toBe(800);
+    expect(result.leaseRevenueMetrics!.unearnedLiability).toBe(0);
+  });
 });
 

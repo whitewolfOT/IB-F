@@ -54,4 +54,8 @@ export class EventService {
     const auditTrail = this.db.getAuditTrail(eventId);
     return { event, auditTrail };
   }
+
+  list(linkedContractId?: string): Record<string, unknown>[] {
+    return this.db.listEvents(linkedContractId);
+  }
 }

@@ -375,6 +375,157 @@ describe('PATCH /api/reviews/:id/ruling', () => {
   });
 });
 
+describe('GET /api/parties', () => {
+  it('returns empty list when no parties registered', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/parties');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns parties after creation', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/parties').send({
+      party_id: 'party-001', name: 'Farmer Ibrahim', role: 'counterparty', country: 'JO',
+    });
+    const res = await request(app).get('/api/parties');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].party_id).toBe('party-001');
+  });
+});
+
+describe('GET /api/assets', () => {
+  it('returns empty list when no assets registered', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/assets');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns assets after creation', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/assets').send({
+      asset_id: 'asset-001', asset_type: 'equipment', ownership_status: 'owned',
+      valuation: 50000, description: 'John Deere tractor',
+    });
+    const res = await request(app).get('/api/assets');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].asset_id).toBe('asset-001');
+  });
+});
+
+describe('GET /api/events', () => {
+  it('returns empty list when no events created', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/events');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('lists events and filters by contract_id', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-list-001', contract_type: 'murabaha' });
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-list-002', contract_type: 'salam' });
+    await request(app).post('/api/events').send({
+      location: 'Dubai', event_type: 'goods_delivery',
+      counterparties: ['a', 'b'], linked_contract_id: 'ctr-list-001',
+      asset_reference: 'ref', quantity: 100, unit: 'kg',
+      supporting_documents: [], created_by: 'op',
+    });
+    await request(app).post('/api/events').send({
+      location: 'Amman', event_type: 'payment_settlement',
+      counterparties: ['c', 'd'], linked_contract_id: 'ctr-list-002',
+      asset_reference: 'ref2', quantity: 50, unit: 'tons',
+      supporting_documents: [], created_by: 'op',
+    });
+    const allRes = await request(app).get('/api/events');
+    expect(allRes.status).toBe(200);
+    expect(allRes.body).toHaveLength(2);
+
+    const filteredRes = await request(app).get('/api/events?contract_id=ctr-list-001');
+    expect(filteredRes.status).toBe(200);
+    expect(filteredRes.body).toHaveLength(1);
+    expect(filteredRes.body[0].linked_contract_id).toBe('ctr-list-001');
+  });
+});
+
+describe('POST /api/reviews/:id/override', () => {
+  function insertReview(db: IcosDb, reviewId: string, contractId: string) {
+    db.insertContract({
+      contract_id: contractId, contract_type: 'murabaha',
+      status: 'draft', shariah_score: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    db.insertShariahReview({
+      review_id: reviewId,
+      related_contract_id: contractId,
+      reviewer_id: 'reviewer-001',
+      triggering_reason: 'Risk flag',
+      legal_reasoning: '',
+      ruling_type: null,
+      ruling_confidence: 0,
+      freeze_settlement: false,
+      block_profit_distribution: false,
+      escalation_status: 'pending',
+      digital_signature: '',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  it('creates an override with 2+ authorizing entities', async () => {
+    const { app, db } = makeApp();
+    insertReview(db, 'rev-ov-001', 'ctr-ov-001');
+
+    const res = await request(app).post('/api/reviews/rev-ov-001/override').send({
+      authorizing_entities: ['shariah-board-chair', 'ceo'],
+      justification: 'Emergency humanitarian relief project',
+      risk_acknowledgment: 'Risk accepted by board resolution BR-2026-07',
+      expiration_conditions: 'Override expires 2026-12-31',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.override_id).toBeTruthy();
+    expect(res.body.authorizing_entities).toHaveLength(2);
+    expect(res.body.justification).toBe('Emergency humanitarian relief project');
+  });
+
+  it('returns 403 when fewer than 2 authorizing entities', async () => {
+    const { app, db } = makeApp();
+    insertReview(db, 'rev-ov-002', 'ctr-ov-002');
+
+    const res = await request(app).post('/api/reviews/rev-ov-002/override').send({
+      authorizing_entities: ['shariah-board-chair'],
+      justification: 'Single approver attempt',
+      risk_acknowledgment: 'Acknowledged',
+      expiration_conditions: 'N/A',
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/least 2/);
+  });
+
+  it('returns 404 for unknown review', async () => {
+    const { app } = makeApp();
+    const res = await request(app).post('/api/reviews/no-such-review/override').send({
+      authorizing_entities: ['a', 'b'],
+      justification: 'test',
+      risk_acknowledgment: 'ack',
+      expiration_conditions: 'never',
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when required fields are missing', async () => {
+    const { app } = makeApp();
+    const res = await request(app).post('/api/reviews/rev-001/override').send({
+      authorizing_entities: ['a', 'b'],
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('SettlementService — audit trail guard', () => {
   it('blocks settlement when event has no compliance_review in audit trail', () => {
     const db = new IcosDb(':memory:');

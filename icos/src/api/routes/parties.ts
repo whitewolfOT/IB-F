@@ -22,6 +22,14 @@ export function partiesRouter(db: IcosDb): Router {
     }
   });
 
+  router.get('/', (_req: Request, res: Response) => {
+    try {
+      res.json(db.listParties());
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   router.get('/:id', (req: Request, res: Response) => {
     try {
       const party = db.getParty(String(req.params.id));
@@ -48,6 +56,14 @@ export function assetsRouter(db: IcosDb): Router {
       const asset: DbAsset = { asset_id, asset_type, ownership_status, valuation, description };
       db.upsertAsset(asset);
       res.status(201).json(asset);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  router.get('/', (_req: Request, res: Response) => {
+    try {
+      res.json(db.listAssets());
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

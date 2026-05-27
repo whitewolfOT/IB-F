@@ -128,4 +128,14 @@ CREATE TABLE IF NOT EXISTS shariah_review_records (
   timestamp             TEXT NOT NULL,
   ruling_json           TEXT
 );
+
+CREATE TABLE IF NOT EXISTS shariah_override_events (
+  override_id           TEXT PRIMARY KEY,
+  overridden_ruling_id  TEXT NOT NULL REFERENCES shariah_review_records(review_id),
+  authorizing_entities  TEXT NOT NULL,
+  justification         TEXT NOT NULL,
+  risk_acknowledgment   TEXT NOT NULL,
+  expiration_conditions TEXT NOT NULL,
+  timestamp             TEXT NOT NULL
+);
 `;

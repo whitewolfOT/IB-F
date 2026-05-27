@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { ShariahService } from '../../services/ShariahService';
-import { RulingInput, RulingState, EffectiveScope } from '../../shariah';
+import { RulingInput, RulingState, EffectiveScope, ShariahOverrideEvent } from '../../shariah';
 
 export function reviewsRouter(shariah: ShariahService): Router {
   const router = Router();
@@ -37,6 +37,33 @@ export function reviewsRouter(shariah: ShariahService): Router {
     } catch (err) {
       const msg = (err as Error).message;
       res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+    }
+  });
+
+  router.post('/:id/override', (req: Request, res: Response) => {
+    try {
+      const { authorizing_entities, justification, risk_acknowledgment, expiration_conditions } =
+        req.body as Partial<Omit<ShariahOverrideEvent, 'override_id' | 'timestamp'>>;
+
+      if (!authorizing_entities || !justification || !risk_acknowledgment || !expiration_conditions) {
+        res.status(400).json({ error: 'authorizing_entities, justification, risk_acknowledgment, and expiration_conditions are required' });
+        return;
+      }
+
+      const override = shariah.applyOverride(String(req.params.id), {
+        overridden_ruling_id: String(req.params.id),
+        authorizing_entities,
+        justification,
+        risk_acknowledgment,
+        expiration_conditions,
+      });
+      res.status(201).json(override);
+    } catch (err) {
+      const msg = (err as Error).message;
+      const status = msg.includes('not found') ? 404
+        : msg.includes('least 2') ? 403
+        : 400;
+      res.status(status).json({ error: msg });
     }
   });
 

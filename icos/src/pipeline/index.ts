@@ -21,7 +21,7 @@ import {
   AgencyContract,
   QardContract,
 } from '../contracts/schemas';
-import { murabahaProfit } from '../formulas';
+import { murabahaProfit, leaseRevenue } from '../formulas';
 import { createShariahReviewStub, ShariahReviewRecord } from '../shariah';
 import { detectFromContract } from '../validation';
 import { scoreCompliance, ComplianceScore } from '../compliance';
@@ -51,6 +51,7 @@ export interface PipelineResult {
   ribaViolations: string[];
   ghararViolations: string[];
   maysirViolations: string[];
+  leaseRevenueMetrics?: { earnedRevenue: number; unearnedLiability: number };
 }
 
 function baseEntryFields(event: IcosEvent) {
@@ -129,6 +130,7 @@ export function runPipeline(
   const base = baseEntryFields(event);
   const ledgerEntries: LedgerEntry[] = [];
   let violations: string[] = [];
+  let ijarahLeaseMetrics: { earnedRevenue: number; unearnedLiability: number } | undefined;
 
   switch (classification.contract_type) {
     case 'murabaha':
@@ -214,12 +216,15 @@ export function runPipeline(
       if (!result.valid) throw new PipelineError(`Contract validation failed: ${violations.join(', ')}`);
       const firstRent = ic.rent_schedule[0]?.amount ?? 0;
       if (firstRent <= 0) throw new PipelineError('ijarah: first rent payment must be positive');
+      // Compute earned vs unearned lease revenue (§9F) for the first rental period
+      const leaseMetrics = leaseRevenue(firstRent, 1, firstRent);
       ledgerEntries.push(createLedgerEntry({
         ...base,
         debit_account: SubledgerType.receivables,          // rent receivable from lessee
         credit_account: SubledgerType.profit_distribution, // lease income (usufruct transferred)
         amount: firstRent,
       }));
+      ijarahLeaseMetrics = leaseMetrics;
       break;
     }
 
@@ -272,5 +277,5 @@ export function runPipeline(
         )
       : null;
 
-  return { classification, ledgerEntries, violations, shariahReviewStub, complianceScore, ribaViolations, ghararViolations, maysirViolations };
+  return { classification, ledgerEntries, violations, shariahReviewStub, complianceScore, ribaViolations, ghararViolations, maysirViolations, leaseRevenueMetrics: ijarahLeaseMetrics };
 }

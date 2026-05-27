@@ -427,4 +427,80 @@ describe('§15 Agricultural: Mudaraba — Agricultural Cooperative', () => {
 
     db.close();
   });
+
+  it('profit settlement distributes to investor (70%) and operator (30%) by mudaraba ratio', () => {
+    const { db, events, contracts, settlement } = setup();
+
+    const mudarabaContract: PartnershipContract = {
+      contract_id: 'mudaraba-settle-2026',
+      contract_type: 'mudaraba',
+      partners: ['investor-pool-001', 'coop-operator-001'],
+      capital_contribution_by_partner: {
+        'investor-pool-001': 200000,
+        'coop-operator-001': 0,
+      },
+      labor_contribution_by_partner: {
+        'investor-pool-001': 'capital only',
+        'coop-operator-001': 'full management',
+      },
+      profit_ratio_by_partner: {
+        'investor-pool-001': 70,
+        'coop-operator-001': 30,
+      },
+      loss_ratio_by_partner: {
+        'investor-pool-001': 100,
+        'coop-operator-001': 0,
+      },
+      management_authority: {
+        'investor-pool-001': 'none',
+        'coop-operator-001': 'absolute',
+      },
+      liquidation_rules: 'Capital returned first; remainder split by ratio',
+      negligence_rules: 'Mudarib bears loss caused by negligence',
+      withdrawal_rules: '6-month notice',
+    };
+
+    contracts.register({
+      contract_id: 'mudaraba-settle-2026',
+      contract_type: 'mudaraba',
+      status: 'approved',
+      shariah_score: 100,
+    });
+
+    const event = events.create({
+      location: 'Aqaba Export Hub',
+      event_type: 'payment_settlement',
+      counterparties: ['investor-pool-001', 'coop-operator-001'],
+      linked_contract_id: 'mudaraba-settle-2026',
+      asset_reference: 'coop-season-profits',
+      quantity: 50000,
+      unit: 'USD',
+      supporting_documents: ['season-accounts.pdf'],
+      created_by: 'settlement-officer-001',
+    });
+
+    db.updateEventState(event.event_id, ApprovalState.approved);
+
+    // Satisfy compliance_review guard
+    db.insertApprovalAuditEvent(transition({
+      event: { ...event, approval_state: ApprovalState.financially_verified },
+      newState: ApprovalState.compliance_review,
+      reviewer: 'compliance-officer-001',
+      role: OrgRole.compliance_officer,
+      reason: 'Compliance review passed for mudaraba settlement',
+    }));
+
+    const realizedProfit = 50000;
+    const record = settlement.settle(event.event_id, mudarabaContract, realizedProfit);
+
+    expect(record.distributions['investor-pool-001']).toBeCloseTo(35000);  // 70%
+    expect(record.distributions['coop-operator-001']).toBeCloseTo(15000); // 30%
+    expect(record.ledger_entries).toHaveLength(2);
+    expect(record.final_state).toBe(ApprovalState.settled);
+
+    const totalDistributed = record.ledger_entries.reduce((s, e) => s + e.amount, 0);
+    expect(totalDistributed).toBeCloseTo(50000);
+
+    db.close();
+  });
 });

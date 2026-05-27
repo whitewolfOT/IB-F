@@ -68,6 +68,11 @@ export class IcosDb {
     return { ...row, verification_status: row.verification_status === 1 } as DbParty;
   }
 
+  listParties(): DbParty[] {
+    const rows = this.db.prepare('SELECT * FROM parties ORDER BY party_id ASC').all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, verification_status: row.verification_status === 1 }) as DbParty);
+  }
+
   // ── Assets ───────────────────────────────────────────────────────────────
 
   upsertAsset(asset: DbAsset): void {
@@ -84,6 +89,10 @@ export class IcosDb {
 
   getAsset(assetId: string): DbAsset | undefined {
     return this.db.prepare('SELECT * FROM assets WHERE asset_id = ?').get(assetId) as DbAsset | undefined;
+  }
+
+  listAssets(): DbAsset[] {
+    return this.db.prepare('SELECT * FROM assets ORDER BY asset_id ASC').all() as DbAsset[];
   }
 
   // ── Contracts ─────────────────────────────────────────────────────────────
@@ -148,6 +157,15 @@ export class IcosDb {
       this.db.prepare('SELECT party_id FROM event_counterparties WHERE event_id = ?').all(eventId) as { party_id: string }[]
     ).map(r => r.party_id);
     return { ...row, counterparties } as Omit<IcosEvent, 'counterparties'> & { counterparties: string[] };
+  }
+
+  listEvents(linkedContractId?: string): Record<string, unknown>[] {
+    if (linkedContractId) {
+      return this.db.prepare(
+        'SELECT * FROM events WHERE linked_contract_id = ? ORDER BY timestamp DESC'
+      ).all(linkedContractId) as Record<string, unknown>[];
+    }
+    return this.db.prepare('SELECT * FROM events ORDER BY timestamp DESC').all() as Record<string, unknown>[];
   }
 
   // ── Ledger Entries ────────────────────────────────────────────────────────
@@ -269,6 +287,35 @@ export class IcosDb {
     return this.db.prepare(
       'SELECT * FROM shariah_review_records WHERE review_id = ?'
     ).get(reviewId) as Record<string, unknown> | undefined;
+  }
+
+  insertShariahOverride(override: {
+    override_id: string;
+    overridden_ruling_id: string;
+    authorizing_entities: string[];
+    justification: string;
+    risk_acknowledgment: string;
+    expiration_conditions: string;
+    timestamp: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO shariah_override_events
+        (override_id, overridden_ruling_id, authorizing_entities, justification,
+         risk_acknowledgment, expiration_conditions, timestamp)
+      VALUES
+        (@override_id, @overridden_ruling_id, @authorizing_entities, @justification,
+         @risk_acknowledgment, @expiration_conditions, @timestamp)
+    `).run({ ...override, authorizing_entities: JSON.stringify(override.authorizing_entities) });
+  }
+
+  getShariahOverridesForReview(reviewId: string): unknown[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM shariah_override_events WHERE overridden_ruling_id = ? ORDER BY timestamp DESC'
+    ).all(reviewId) as Record<string, unknown>[];
+    return rows.map(row => ({
+      ...row,
+      authorizing_entities: JSON.parse(String(row.authorizing_entities)),
+    }));
   }
 
   updateShariahReviewRuling(reviewId: string, params: {
