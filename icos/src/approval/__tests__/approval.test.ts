@@ -1,4 +1,4 @@
-import { transition, InvalidTransitionError, ApprovalAuditEvent } from '../index';
+import { transition, InvalidTransitionError, AuthorizationError, ApprovalAuditEvent } from '../index';
 import { createEvent } from '../../events';
 import { ApprovalState, OrgRole } from '../../types';
 
@@ -127,6 +127,135 @@ describe('transition', () => {
     expect(audit.prior_state).toBe(ApprovalState.suspended);
   });
 
+  it('no conditions: transitions work as before', () => {
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 'submit' });
+    expect(event.approval_state).toBe(ApprovalState.submitted);
+  });
+});
+
+describe('authority matrix enforcement', () => {
+  it('throws AuthorizationError when wrong role for high_risk_counterparty condition', () => {
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });
+    expect(() =>
+      transition({
+        event,
+        newState: ApprovalState.under_review,
+        reviewer: 'wrong-role-001',
+        role: OrgRole.operator,  // should be risk_officer
+        reason: 'review',
+        conditions: ['high_risk_counterparty'],
+      })
+    ).toThrow(AuthorizationError);
+  });
+
+  it('allows transition when correct role matches authority matrix condition', () => {
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });
+    const audit = transition({
+      event,
+      newState: ApprovalState.under_review,
+      reviewer: 'risk-001',
+      role: OrgRole.risk_officer,  // correct role for high_risk_counterparty
+      reason: 'review',
+      conditions: ['high_risk_counterparty'],
+    });
+    expect(audit.new_state).toBe(ApprovalState.under_review);
+  });
+
+  it('allows transition with conditions that have no authority matrix entry', () => {
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });
+    const audit = transition({
+      event,
+      newState: ApprovalState.under_review,
+      reviewer: 'fc-001',
+      role: OrgRole.financial_controller,
+      reason: 'review',
+      conditions: ['some_unlisted_condition'],
+    });
+    expect(audit.new_state).toBe(ApprovalState.under_review);
+  });
+});
+
+describe('multi-sig enforcement for murabaha_over_threshold', () => {
+  function buildFullAuditTrail(): ApprovalAuditEvent[] {
+    const event = makeDraftEvent();
+    const trail: ApprovalAuditEvent[] = [];
+    trail.push(transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' }));
+    trail.push(transition({ event, newState: ApprovalState.under_review, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'r' }));
+    trail.push(transition({ event, newState: ApprovalState.operationally_verified, reviewer: 'wm-001', role: OrgRole.warehouse_manager, reason: 'ov' }));
+    trail.push(transition({ event, newState: ApprovalState.financially_verified, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'fv' }));
+    trail.push(transition({ event, newState: ApprovalState.shariah_review, reviewer: 'sr-001', role: OrgRole.shariah_reviewer, reason: 'sr' }));
+    return trail;
+  }
+
+  it('blocks approval without prior audit trail for murabaha_over_threshold', () => {
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });
+    transition({ event, newState: ApprovalState.under_review, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'r' });
+    transition({ event, newState: ApprovalState.operationally_verified, reviewer: 'wm-001', role: OrgRole.warehouse_manager, reason: 'ov' });
+    transition({ event, newState: ApprovalState.financially_verified, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'fv' });
+    transition({ event, newState: ApprovalState.compliance_review, reviewer: 'co-001', role: OrgRole.compliance_officer, reason: 'cr' });
+    expect(() =>
+      transition({
+        event,
+        newState: ApprovalState.approved,
+        reviewer: 'co-001',
+        role: OrgRole.compliance_officer,
+        reason: 'approve',
+        conditions: ['murabaha_over_threshold'],
+        priorAuditEvents: [],  // empty — missing all three required prior approvals
+      })
+    ).toThrow(AuthorizationError);
+  });
+
+  it('blocks when shariah approval is missing from prior audit trail', () => {
+    const partialTrail: ApprovalAuditEvent[] = buildFullAuditTrail().filter(
+      e => e.new_state !== ApprovalState.shariah_review,
+    );
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });
+    transition({ event, newState: ApprovalState.under_review, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'r' });
+    transition({ event, newState: ApprovalState.operationally_verified, reviewer: 'wm-001', role: OrgRole.warehouse_manager, reason: 'ov' });
+    transition({ event, newState: ApprovalState.financially_verified, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'fv' });
+    transition({ event, newState: ApprovalState.compliance_review, reviewer: 'co-001', role: OrgRole.compliance_officer, reason: 'cr' });
+    expect(() =>
+      transition({
+        event,
+        newState: ApprovalState.approved,
+        reviewer: 'co-001',
+        role: OrgRole.compliance_officer,
+        reason: 'approve',
+        conditions: ['murabaha_over_threshold'],
+        priorAuditEvents: partialTrail,
+      })
+    ).toThrow(AuthorizationError);
+  });
+
+  it('succeeds when all three prior approvals are present in audit trail', () => {
+    const fullTrail = buildFullAuditTrail();
+    const event = makeDraftEvent();
+    transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });
+    transition({ event, newState: ApprovalState.under_review, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'r' });
+    transition({ event, newState: ApprovalState.operationally_verified, reviewer: 'wm-001', role: OrgRole.warehouse_manager, reason: 'ov' });
+    transition({ event, newState: ApprovalState.financially_verified, reviewer: 'fc-001', role: OrgRole.financial_controller, reason: 'fv' });
+    transition({ event, newState: ApprovalState.shariah_review, reviewer: 'sr-001', role: OrgRole.shariah_reviewer, reason: 'sr' });
+    const audit = transition({
+      event,
+      newState: ApprovalState.approved,
+      reviewer: 'sr-001',
+      role: OrgRole.shariah_reviewer,
+      reason: 'all conditions met',
+      conditions: ['murabaha_over_threshold'],
+      priorAuditEvents: fullTrail,
+    });
+    expect(audit.new_state).toBe(ApprovalState.approved);
+  });
+});
+
+describe('transition (continued)', () => {
   it('transitions shariah_review to rejected', () => {
     const event = makeDraftEvent();
     transition({ event, newState: ApprovalState.submitted, reviewer: 'op-001', role: OrgRole.operator, reason: 's' });

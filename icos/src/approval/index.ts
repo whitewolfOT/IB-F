@@ -73,14 +73,52 @@ export interface TransitionParams {
   role: OrgRole;
   reason: string;
   supportingDocuments?: string[];
+  conditions?: string[];
+  priorAuditEvents?: ApprovalAuditEvent[];
 }
 
 export function transition(params: TransitionParams): ApprovalAuditEvent {
-  const { event, newState, reviewer, role, reason } = params;
+  const { event, newState, reviewer, role, reason, conditions, priorAuditEvents } = params;
+
   const allowed = ALLOWED_TRANSITIONS.some(([from, to]) => from === event.approval_state && to === newState);
   if (!allowed) {
     throw new InvalidTransitionError(event.approval_state, newState);
   }
+
+  // Enforce authority matrix: each condition maps to a required role
+  if (conditions) {
+    for (const condition of conditions) {
+      const requiredRole = AUTHORITY_MATRIX[condition];
+      if (requiredRole && role !== requiredRole) {
+        throw new AuthorizationError(
+          `Condition '${condition}' requires role '${requiredRole}', got '${role}'`,
+        );
+      }
+    }
+  }
+
+  // Multi-sig: murabaha_over_threshold requires operational + financial + shariah prior approvals
+  if (newState === ApprovalState.approved && conditions?.includes('murabaha_over_threshold')) {
+    const prior = priorAuditEvents ?? [];
+    const hasOperational = prior.some(
+      e => [OrgRole.operator, OrgRole.warehouse_manager].includes(e.reviewer_role)
+        && e.new_state === ApprovalState.operationally_verified,
+    );
+    const hasFinancial = prior.some(
+      e => e.reviewer_role === OrgRole.financial_controller
+        && e.new_state === ApprovalState.financially_verified,
+    );
+    const hasShariah = prior.some(
+      e => [OrgRole.shariah_reviewer, OrgRole.senior_shariah_board].includes(e.reviewer_role)
+        && e.new_state === ApprovalState.shariah_review,
+    );
+    if (!hasOperational || !hasFinancial || !hasShariah) {
+      throw new AuthorizationError(
+        'murabaha_over_threshold requires operational + financial + shariah approval',
+      );
+    }
+  }
+
   const priorState = event.approval_state;
   (event as { approval_state: ApprovalState }).approval_state = newState;
   const auditEvent: ApprovalAuditEvent = {

@@ -9,6 +9,8 @@ export interface TransactionDescriptor {
   multiple_capital_providers: boolean;
   payment_timing: 'immediate' | 'deferred' | 'installment';
   asset_fields_present: string[];
+  is_benevolent_loan?: boolean;
+  is_agency_agreement?: boolean;
 }
 
 export interface ClassificationResult {
@@ -28,6 +30,8 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   ijarah: ['usufruct_transferred', 'leased_asset', 'lease_duration', 'rent_schedule', 'maintenance_obligations'],
   mudaraba: ['single_capital_provider', 'labor_from_second_party', 'profit_ratio_by_partner', 'capital_contribution'],
   musharaka: ['multiple_capital_providers', 'profit_ratio_by_partner', 'loss_ratio_by_partner', 'capital_contribution'],
+  qard: ['lender', 'borrower', 'principal_amount', 'repayment_schedule'],
+  wakala: ['principal', 'agent', 'authorized_scope', 'fee_structure'],
 };
 
 function computeConfidence(contractType: string, presentFields: string[], pathCount: number): number {
@@ -70,6 +74,12 @@ export function classify(descriptor: TransactionDescriptor): ClassificationResul
       pathCount = 1;
     } else if (descriptor.multiple_capital_providers) {
       contract_type = 'musharaka';
+      pathCount = 1;
+    } else if (descriptor.is_benevolent_loan) {
+      contract_type = 'qard';
+      pathCount = 1;
+    } else if (descriptor.is_agency_agreement) {
+      contract_type = 'wakala';
       pathCount = 1;
     } else {
       contract_type = 'unknown';

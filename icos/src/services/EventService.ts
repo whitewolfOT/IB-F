@@ -9,6 +9,7 @@ export interface TransitionRequest {
   role: OrgRole;
   reason: string;
   supportingDocuments?: string[];
+  conditions?: string[];
 }
 
 export interface EventWithHistory {
@@ -29,6 +30,7 @@ export class EventService {
     const stored = this.db.getEvent(eventId);
     if (!stored) throw new Error(`Event not found: ${eventId}`);
 
+    const auditTrail = this.db.getAuditTrail(eventId);
     const event = stored as IcosEvent;
     const auditEvent = transition({
       event,
@@ -37,6 +39,8 @@ export class EventService {
       role: req.role,
       reason: req.reason,
       supportingDocuments: req.supportingDocuments,
+      conditions: req.conditions,
+      priorAuditEvents: auditTrail,
     });
 
     this.db.updateEventState(eventId, req.newState);

@@ -172,6 +172,61 @@ describe('classify - musharaka branch', () => {
   });
 });
 
+describe('classify - qard branch', () => {
+  it('classifies as qard when is_benevolent_loan is set', () => {
+    const descriptor: TransactionDescriptor = {
+      ...base,
+      ownership_transfer: false,
+      is_benevolent_loan: true,
+      asset_fields_present: ['lender', 'borrower', 'principal_amount', 'repayment_schedule'],
+    };
+    const result = classify(descriptor);
+    expect(result.contract_type).toBe('qard');
+    expect(result.shariah_status).toBe('compliant');
+    expect(result.required_missing_fields).toHaveLength(0);
+  });
+
+  it('qard with no fields present lists required_missing_fields', () => {
+    const descriptor: TransactionDescriptor = {
+      ...base,
+      ownership_transfer: false,
+      is_benevolent_loan: true,
+      asset_fields_present: [],
+    };
+    const result = classify(descriptor);
+    expect(result.contract_type).toBe('qard');
+    expect(result.required_missing_fields).toContain('lender');
+    expect(result.required_missing_fields).toContain('principal_amount');
+  });
+});
+
+describe('classify - wakala branch', () => {
+  it('classifies as wakala when is_agency_agreement is set', () => {
+    const descriptor: TransactionDescriptor = {
+      ...base,
+      ownership_transfer: false,
+      is_agency_agreement: true,
+      asset_fields_present: ['principal', 'agent', 'authorized_scope', 'fee_structure'],
+    };
+    const result = classify(descriptor);
+    expect(result.contract_type).toBe('wakala');
+    expect(result.shariah_status).toBe('compliant');
+    expect(result.required_missing_fields).toHaveLength(0);
+  });
+
+  it('qard takes precedence over wakala when both flags set', () => {
+    const descriptor: TransactionDescriptor = {
+      ...base,
+      ownership_transfer: false,
+      is_benevolent_loan: true,
+      is_agency_agreement: true,
+      asset_fields_present: ['lender', 'borrower', 'principal_amount', 'repayment_schedule'],
+    };
+    const result = classify(descriptor);
+    expect(result.contract_type).toBe('qard');
+  });
+});
+
 describe('classify - unknown/fallback branch', () => {
   it('returns unknown when no pattern matches', () => {
     const descriptor: TransactionDescriptor = {

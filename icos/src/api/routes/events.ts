@@ -54,12 +54,13 @@ export function eventsRouter(
 
   router.post('/:id/transition', (req: Request, res: Response) => {
     try {
-      const { newState, reviewer, role, reason, supportingDocuments } = req.body as {
+      const { newState, reviewer, role, reason, supportingDocuments, conditions } = req.body as {
         newState?: string;
         reviewer?: string;
         role?: string;
         reason?: string;
         supportingDocuments?: string[];
+        conditions?: string[];
       };
       if (!newState || !reviewer || !role || !reason) {
         res.status(400).json({ error: 'newState, reviewer, role, and reason are required' });
@@ -71,11 +72,15 @@ export function eventsRouter(
         role: role as OrgRole,
         reason,
         supportingDocuments,
+        conditions,
       });
       res.json(audit);
     } catch (err) {
       const msg = (err as Error).message;
-      const status = msg.includes('not found') ? 404 : msg.includes('Invalid transition') ? 422 : 500;
+      const status = msg.includes('not found') ? 404
+        : msg.includes('Invalid transition') ? 422
+        : msg.includes('requires role') || msg.includes('requires operational') ? 403
+        : 500;
       res.status(status).json({ error: msg });
     }
   });

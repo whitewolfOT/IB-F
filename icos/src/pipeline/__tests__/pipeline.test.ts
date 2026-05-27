@@ -228,6 +228,79 @@ describe('runPipeline - salam flow', () => {
   });
 });
 
+describe('runPipeline - compliance scoring gate', () => {
+  it('valid murabaha result includes complianceScore with score 100', () => {
+    const event = makeApprovedEvent(validMurabaha.contract_id);
+    const result = runPipeline(event, validMurabaha, murabahaDescriptor);
+    expect(result.complianceScore).toBeDefined();
+    expect(result.complianceScore.score).toBe(100);
+    expect(result.complianceScore.band).toBe('Fully Compliant');
+    expect(result.ribaViolations).toHaveLength(0);
+    expect(result.ghararViolations).toHaveLength(0);
+    expect(result.maysirViolations).toHaveLength(0);
+  });
+
+  it('compliance gate: partnership with guaranteed_return and no asset reference → score < 40 → PipelineError', () => {
+    const event = createEvent({
+      location: 'Test',
+      event_type: 'partnership_funding',
+      counterparties: ['partner-A', 'partner-B'],
+      linked_contract_id: validMusharaka.contract_id,
+      asset_reference: '',  // no asset backing → assetBacked: false
+      quantity: 100000,
+      unit: 'USD',
+      supporting_documents: [],
+      created_by: 'user-001',
+    });
+    (event as { approval_state: ApprovalState }).approval_state = ApprovalState.approved;
+    const invalidContract: PartnershipContract = {
+      ...validMusharaka,
+      guaranteed_return: true,  // noRiba: false, properRiskSharing: false
+    };
+    // Score: noRiba(0) + noGharar(25) + assetBacked(0) + ownershipValid(10) + properRiskSharing(0) = 35
+    expect(() => runPipeline(event, invalidContract, musharakaDescriptor)).toThrow(PipelineError);
+  });
+
+  it('compliance gate: qard with guaranteed_excess + empty repayment + no asset → score < 40 → PipelineError', () => {
+    const event = createEvent({
+      location: 'Test',
+      event_type: 'payment_settlement',
+      counterparties: ['lender-001', 'borrower-001'],
+      linked_contract_id: 'ctr-qard-test',
+      asset_reference: '',  // no asset
+      quantity: 10000,
+      unit: 'USD',
+      supporting_documents: [],
+      created_by: 'user-001',
+    });
+    (event as { approval_state: ApprovalState }).approval_state = ApprovalState.approved;
+    const invalidQard: QardContract = {
+      contract_id: 'ctr-qard-test',
+      contract_type: 'qard',
+      lender: 'lender-001',
+      borrower: 'borrower-001',
+      principal_amount: 10000,
+      repayment_schedule: [],  // empty → delivery_date_specified: false, key_terms_present: false → noGharar: false
+      guaranteed_excess: true,  // noRiba: false
+    };
+    const qardDescriptor: TransactionDescriptor = {
+      ownership_transfer: false,
+      immediate_delivery: false,
+      goods_standardized: false,
+      manufactured_later: false,
+      usufruct_transferred: false,
+      single_capital_provider: false,
+      labor_from_second_party: false,
+      multiple_capital_providers: false,
+      payment_timing: 'deferred',
+      asset_fields_present: ['lender', 'borrower', 'principal_amount', 'repayment_schedule'],
+      is_benevolent_loan: true,
+    };
+    // Score: noRiba(0) + noGharar(0) + assetBacked(0) + ownershipValid(10) + properRiskSharing(10) = 20
+    expect(() => runPipeline(event, invalidQard, qardDescriptor)).toThrow(PipelineError);
+  });
+});
+
 describe('runPipeline - ijarah flow', () => {
   const validIjarah: IjarahContract = {
     contract_id: 'ctr-ijarah-001',

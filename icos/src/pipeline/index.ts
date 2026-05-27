@@ -22,6 +22,8 @@ import {
 } from '../contracts/schemas';
 import { murabahaProfit } from '../formulas';
 import { createShariahReviewStub, ShariahReviewRecord } from '../shariah';
+import { detectFromContract } from '../validation';
+import { scoreCompliance, ComplianceScore } from '../compliance';
 
 export type AnyContract =
   | SaleContract
@@ -44,6 +46,10 @@ export interface PipelineResult {
   ledgerEntries: LedgerEntry[];
   violations: string[];
   shariahReviewStub: ShariahReviewRecord | null;
+  complianceScore: ComplianceScore;
+  ribaViolations: string[];
+  ghararViolations: string[];
+  maysirViolations: string[];
 }
 
 function baseEntryFields(event: IcosEvent) {
@@ -71,6 +77,30 @@ export function runPipeline(
   const classification = classify(descriptor);
   if (classification.violations.length > 0) {
     throw new PipelineError(`Classification violations: ${classification.violations.join(', ')}`);
+  }
+
+  // Step 1.5: Compliance scoring gate (spec §12) — runs before contract validation
+  const { ribaViolations, ghararViolations, maysirViolations } = detectFromContract(
+    contract as Parameters<typeof detectFromContract>[0],
+  );
+  const complianceScore = scoreCompliance({
+    noRiba: ribaViolations.length === 0,
+    noGharar: ghararViolations.length === 0,
+    assetBacked: Boolean(event.asset_reference),
+    ownershipValid:
+      classification.contract_type !== 'murabaha' ||
+      (contract as SaleContract).possession_status === 'in_possession',
+    properRiskSharing:
+      !['mudaraba', 'musharaka'].includes(classification.contract_type) ||
+      !(contract as PartnershipContract).guaranteed_return,
+  });
+  if (complianceScore.score < 40) {
+    throw new PipelineError(
+      `Compliance score ${complianceScore.score} is Non-Compliant: ${complianceScore.band}. ` +
+      `Riba: [${ribaViolations.join('; ')}]; ` +
+      `Gharar: [${ghararViolations.join('; ')}]; ` +
+      `Maysir: [${maysirViolations.join('; ')}]`,
+    );
   }
 
   // Step 2: Validate contract and produce ledger entries
@@ -220,5 +250,5 @@ export function runPipeline(
         )
       : null;
 
-  return { classification, ledgerEntries, violations, shariahReviewStub };
+  return { classification, ledgerEntries, violations, shariahReviewStub, complianceScore, ribaViolations, ghararViolations, maysirViolations };
 }
