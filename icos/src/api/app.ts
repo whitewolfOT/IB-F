@@ -4,9 +4,11 @@ import { ContractService } from '../services/ContractService';
 import { EventService } from '../services/EventService';
 import { PipelineService } from '../services/PipelineService';
 import { SettlementService } from '../services/SettlementService';
+import { ShariahService } from '../services/ShariahService';
 import { contractsRouter } from './routes/contracts';
 import { eventsRouter } from './routes/events';
 import { partiesRouter, assetsRouter } from './routes/parties';
+import { reviewsRouter } from './routes/reviews';
 
 export function createApp(db: IcosDb) {
   const app = express();
@@ -16,11 +18,13 @@ export function createApp(db: IcosDb) {
   const events = new EventService(db);
   const pipeline = new PipelineService(db);
   const settlementSvc = new SettlementService(db);
+  const shariahSvc = new ShariahService(db);
 
   app.use('/api/parties', partiesRouter(db));
   app.use('/api/assets', assetsRouter(db));
   app.use('/api/contracts', contractsRouter(contracts));
   app.use('/api/events', eventsRouter(events, pipeline, settlementSvc));
+  app.use('/api/reviews', reviewsRouter(shariahSvc));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', system: 'ICOS', version: '0.1.0' });

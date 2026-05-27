@@ -147,6 +147,42 @@ export function handleNonCompliance(record: ShariahReviewRecord): ComplianceFlag
   };
 }
 
+export interface RulingInput {
+  ruling_type: RulingState;
+  violated_principles: string[];
+  cited_standards: string[];
+  reasoning_summary: string;
+  remediation_steps: string[];
+  effective_scope: EffectiveScope;
+  expiration_conditions: string;
+  override_permissions: string[];
+  legal_reasoning: string;
+  ruling_confidence: number;
+  digital_signature?: string;
+}
+
+export function updateShariahRuling(record: ShariahReviewRecord, input: RulingInput): ComplianceFlag | null {
+  record.ruling = {
+    ruling_type: input.ruling_type,
+    violated_principles: input.violated_principles,
+    cited_standards: input.cited_standards,
+    reasoning_summary: input.reasoning_summary,
+    remediation_steps: input.remediation_steps,
+    effective_scope: input.effective_scope,
+    expiration_conditions: input.expiration_conditions,
+    override_permissions: input.override_permissions,
+  };
+  record.legal_reasoning = input.legal_reasoning;
+  record.ruling_confidence = input.ruling_confidence;
+  if (input.digital_signature !== undefined) {
+    record.digital_signature = input.digital_signature;
+  }
+  if (input.ruling_type === RulingState.non_compliant) {
+    return handleNonCompliance(record);
+  }
+  return null;
+}
+
 export function createOverride(params: Omit<ShariahOverrideEvent, 'override_id' | 'timestamp'>): ShariahOverrideEvent {
   if (!params.authorizing_entities || params.authorizing_entities.length < 2) {
     throw new ShariahOverrideError('Override requires at least 2 authorizing entities');

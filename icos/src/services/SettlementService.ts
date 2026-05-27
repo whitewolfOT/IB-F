@@ -1,5 +1,5 @@
 import { IcosDb } from '../db';
-import { settle, SettlementAuditRecord } from '../settlement';
+import { settle, SettlementAuditRecord, SettlementError } from '../settlement';
 import { PartnershipContract } from '../contracts/schemas';
 import { ShariahReviewRecord } from '../shariah';
 import { ApprovalState } from '../types';
@@ -15,6 +15,16 @@ export class SettlementService {
   ): SettlementAuditRecord {
     const stored = this.db.getEvent(eventId);
     if (!stored) throw new Error(`Event not found: ${eventId}`);
+
+    const auditTrail = this.db.getAuditTrail(eventId);
+    const hasComplianceStage = auditTrail.some(
+      e => e.new_state === ApprovalState.compliance_review || e.new_state === ApprovalState.shariah_review,
+    );
+    if (!hasComplianceStage) {
+      throw new SettlementError(
+        `Event ${eventId} has not completed compliance_review. Settlement requires full approval chain.`,
+      );
+    }
 
     const event = stored as unknown as Parameters<typeof settle>[0];
     const record = settle(event, contract, realizedProfit, shariahRecord);

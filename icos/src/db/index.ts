@@ -264,4 +264,41 @@ export class IcosDb {
       'SELECT * FROM shariah_review_records WHERE related_contract_id = ? ORDER BY timestamp DESC'
     ).all(contractId);
   }
+
+  getShariahReview(reviewId: string): Record<string, unknown> | undefined {
+    return this.db.prepare(
+      'SELECT * FROM shariah_review_records WHERE review_id = ?'
+    ).get(reviewId) as Record<string, unknown> | undefined;
+  }
+
+  updateShariahReviewRuling(reviewId: string, params: {
+    ruling_type: string;
+    legal_reasoning: string;
+    ruling_confidence: number;
+    freeze_settlement: boolean;
+    block_profit_distribution: boolean;
+    digital_signature: string;
+    ruling_json: string;
+  }): void {
+    this.db.prepare(`
+      UPDATE shariah_review_records
+      SET ruling_type = @ruling_type,
+          legal_reasoning = @legal_reasoning,
+          ruling_confidence = @ruling_confidence,
+          freeze_settlement = @freeze_settlement,
+          block_profit_distribution = @block_profit_distribution,
+          digital_signature = @digital_signature,
+          ruling_json = @ruling_json
+      WHERE review_id = @review_id
+    `).run({
+      review_id: reviewId,
+      ruling_type: params.ruling_type,
+      legal_reasoning: params.legal_reasoning,
+      ruling_confidence: params.ruling_confidence,
+      freeze_settlement: params.freeze_settlement ? 1 : 0,
+      block_profit_distribution: params.block_profit_distribution ? 1 : 0,
+      digital_signature: params.digital_signature,
+      ruling_json: params.ruling_json,
+    });
+  }
 }

@@ -15,6 +15,7 @@ import {
   PartnershipContract,
 } from '../../contracts/schemas';
 import { TransactionDescriptor } from '../../classification';
+import { transition } from '../../approval';
 
 function setup() {
   const db = new IcosDb(':memory:');
@@ -302,6 +303,15 @@ describe('§15 Agricultural: Musharaka — Farmer–Investor Partnership', () =>
     db.updateEventState(event.event_id, ApprovalState.approved);
     const stored = db.getEvent(event.event_id)!;
     (stored as { approval_state: string }).approval_state = ApprovalState.approved;
+
+    // Satisfy the audit-trail compliance_review guard in SettlementService
+    db.insertApprovalAuditEvent(transition({
+      event: { ...event, approval_state: ApprovalState.financially_verified },
+      newState: ApprovalState.compliance_review,
+      reviewer: 'compliance-officer-001',
+      role: OrgRole.compliance_officer,
+      reason: 'Compliance review passed',
+    }));
 
     const realizedProfit = 40000;
     const record = settlement.settle(event.event_id, musharakaContract, realizedProfit);

@@ -2,9 +2,11 @@ import {
   createShariahReviewStub,
   handleNonCompliance,
   createOverride,
+  updateShariahRuling,
   ShariahOverrideError,
   RulingState,
   Ruling,
+  RulingInput,
   ShariahReviewRecord,
 } from '../index';
 
@@ -98,6 +100,77 @@ describe('handleNonCompliance', () => {
   it('throws when ruling is null', () => {
     const record = createShariahReviewStub('ctr-001', 'Stub');
     expect(() => handleNonCompliance(record)).toThrow(Error);
+  });
+});
+
+describe('updateShariahRuling', () => {
+  const baseInput: RulingInput = {
+    ruling_type: RulingState.compliant,
+    violated_principles: [],
+    cited_standards: ['AAOIFI FAS 1'],
+    reasoning_summary: 'Fully compliant structure',
+    remediation_steps: [],
+    effective_scope: 'contract-specific',
+    expiration_conditions: 'N/A',
+    override_permissions: [],
+    legal_reasoning: 'No prohibited elements detected.',
+    ruling_confidence: 0.95,
+    digital_signature: 'sig-abc',
+  };
+
+  it('sets ruling on the record', () => {
+    const record = createShariahReviewStub('ctr-001', 'Routine review');
+    updateShariahRuling(record, baseInput);
+    expect(record.ruling).not.toBeNull();
+    expect(record.ruling?.ruling_type).toBe(RulingState.compliant);
+  });
+
+  it('sets legal_reasoning and ruling_confidence', () => {
+    const record = createShariahReviewStub('ctr-001', 'Routine review');
+    updateShariahRuling(record, baseInput);
+    expect(record.legal_reasoning).toBe('No prohibited elements detected.');
+    expect(record.ruling_confidence).toBe(0.95);
+  });
+
+  it('sets digital_signature when provided', () => {
+    const record = createShariahReviewStub('ctr-001', 'Routine review');
+    updateShariahRuling(record, baseInput);
+    expect(record.digital_signature).toBe('sig-abc');
+  });
+
+  it('returns null for compliant ruling', () => {
+    const record = createShariahReviewStub('ctr-001', 'Routine review');
+    const flag = updateShariahRuling(record, baseInput);
+    expect(flag).toBeNull();
+  });
+
+  it('sets freeze_settlement and block_profit_distribution for non_compliant ruling', () => {
+    const record = createShariahReviewStub('ctr-001', 'Non-compliance check');
+    const input: RulingInput = {
+      ...baseInput,
+      ruling_type: RulingState.non_compliant,
+      violated_principles: ['no_riba'],
+      reasoning_summary: 'Fixed return detected',
+      legal_reasoning: 'Prohibited interest element found.',
+    };
+    updateShariahRuling(record, input);
+    expect(record.freeze_settlement).toBe(true);
+    expect(record.block_profit_distribution).toBe(true);
+  });
+
+  it('returns a ComplianceFlag for non_compliant ruling', () => {
+    const record = createShariahReviewStub('ctr-001', 'Non-compliance check');
+    const input: RulingInput = {
+      ...baseInput,
+      ruling_type: RulingState.non_compliant,
+      violated_principles: ['no_riba'],
+      reasoning_summary: 'Fixed return detected',
+      legal_reasoning: 'Prohibited interest element found.',
+    };
+    const flag = updateShariahRuling(record, input);
+    expect(flag).not.toBeNull();
+    expect(flag?.severity).toBe('critical');
+    expect(flag?.contract_id).toBe('ctr-001');
   });
 });
 

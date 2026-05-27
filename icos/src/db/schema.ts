@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS shariah_review_records (
   block_profit_distribution INTEGER NOT NULL DEFAULT 0 CHECK (block_profit_distribution IN (0, 1)),
   escalation_status     TEXT NOT NULL DEFAULT 'pending',
   digital_signature     TEXT NOT NULL DEFAULT '',
-  timestamp             TEXT NOT NULL
+  timestamp             TEXT NOT NULL,
+  ruling_json           TEXT
 );
 `;
