@@ -269,6 +269,64 @@ describe('IcosDb — compliance flags', () => {
   });
 });
 
+describe('IcosDb — ledger entry immutability', () => {
+  it('ledger entry is finalized immediately after insertion', () => {
+    const db = makeDb();
+    db.insertContract(contract);
+    const event = createEvent({
+      location: 'Test', event_type: 'goods_delivery',
+      counterparties: ['p1'], linked_contract_id: 'ctr-001',
+      asset_reference: 'ref', quantity: 100, unit: 'USD',
+      supporting_documents: [], created_by: 'user',
+    });
+    db.insertEvent(event);
+    const entry = createLedgerEntry({
+      originating_event_id: event.event_id,
+      linked_contract_id: 'ctr-001',
+      counterparties: ['p1'],
+      debit_account: SubledgerType.receivables,
+      credit_account: SubledgerType.payables,
+      amount: 100,
+      currency: 'USD',
+      asset_reference: 'ref',
+      created_by: 'user',
+      approval_state: ApprovalState.approved,
+    });
+    db.insertLedgerEntry(entry);
+    // Already finalized — calling again is a no-op (UPDATE WHERE matches nothing since finalized=1 already)
+    expect(() => db.finalizeLedgerEntry(entry.entry_id)).not.toThrow();
+    db.close();
+  });
+
+  it('SQLite trigger prevents UPDATE on finalized ledger entry', () => {
+    const db = makeDb();
+    db.insertContract(contract);
+    const event = createEvent({
+      location: 'Test', event_type: 'goods_delivery',
+      counterparties: ['p1'], linked_contract_id: 'ctr-001',
+      asset_reference: 'ref', quantity: 100, unit: 'USD',
+      supporting_documents: [], created_by: 'user',
+    });
+    db.insertEvent(event);
+    const entry = createLedgerEntry({
+      originating_event_id: event.event_id,
+      linked_contract_id: 'ctr-001',
+      counterparties: ['p1'],
+      debit_account: SubledgerType.receivables,
+      credit_account: SubledgerType.payables,
+      amount: 100,
+      currency: 'USD',
+      asset_reference: 'ref',
+      created_by: 'user',
+      approval_state: ApprovalState.approved,
+    });
+    db.insertLedgerEntry(entry);
+    // Attempting a raw mutation after finalization should throw due to the trigger
+    expect(() => db.attemptLedgerUpdate(entry.entry_id, 999)).toThrow(/finalized/);
+    db.close();
+  });
+});
+
 describe('IcosDb — shariah review records', () => {
   it('inserts and retrieves shariah review records', () => {
     const db = makeDb();

@@ -71,8 +71,16 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
   created_by            TEXT NOT NULL,
   approval_state        TEXT NOT NULL,
   audit_hash            TEXT NOT NULL,
-  timestamp             TEXT NOT NULL
+  timestamp             TEXT NOT NULL,
+  finalized             INTEGER NOT NULL DEFAULT 0 CHECK (finalized IN (0,1))
 );
+
+CREATE TRIGGER IF NOT EXISTS prevent_finalized_ledger_update
+BEFORE UPDATE ON ledger_entries
+WHEN OLD.finalized = 1
+BEGIN
+  SELECT RAISE(ABORT, 'Ledger entry is finalized and cannot be modified');
+END;
 
 CREATE TABLE IF NOT EXISTS ledger_entry_counterparties (
   entry_id    TEXT NOT NULL REFERENCES ledger_entries(entry_id),

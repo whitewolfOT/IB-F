@@ -31,6 +31,13 @@ export class LedgerConstraintError extends Error {
   }
 }
 
+export class LedgerImmutabilityError extends Error {
+  constructor(entryId: string) {
+    super(`Ledger entry ${entryId} is finalized and cannot be modified`);
+    this.name = 'LedgerImmutabilityError';
+  }
+}
+
 export function assertBalance(debitTotal: number, creditTotal: number): void {
   if (Math.abs(debitTotal - creditTotal) > 0.0001) {
     throw new BalanceViolationError(debitTotal, creditTotal);

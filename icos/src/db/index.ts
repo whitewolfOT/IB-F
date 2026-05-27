@@ -168,6 +168,16 @@ export class IcosDb {
     for (const partyId of entry.counterparties) {
       insertCP.run(entry.entry_id, partyId);
     }
+
+    this.finalizeLedgerEntry(entry.entry_id);
+  }
+
+  finalizeLedgerEntry(entryId: string): void {
+    this.db.prepare('UPDATE ledger_entries SET finalized = 1 WHERE entry_id = ? AND finalized = 0').run(entryId);
+  }
+
+  attemptLedgerUpdate(entryId: string, amount: number): void {
+    this.db.prepare('UPDATE ledger_entries SET amount = ? WHERE entry_id = ?').run(amount, entryId);
   }
 
   getLedgerEntriesForContract(contractId: string): LedgerEntry[] {
