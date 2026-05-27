@@ -1,6 +1,5 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { SCHEMA_SQL } from './schema';
 import { LedgerEntry } from '../ledger';
 import { IcosEvent } from '../events';
 import { ApprovalAuditEvent } from '../approval';
@@ -42,9 +41,7 @@ export class IcosDb {
   }
 
   private initialize(): void {
-    const schemaPath = join(__dirname, 'schema.sql');
-    const schema = readFileSync(schemaPath, 'utf-8');
-    this.db.exec(schema);
+    this.db.exec(SCHEMA_SQL);
   }
 
   close(): void {

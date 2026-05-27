@@ -21,6 +21,7 @@ import {
   QardContract,
 } from '../contracts/schemas';
 import { murabahaProfit } from '../formulas';
+import { createShariahReviewStub, ShariahReviewRecord } from '../shariah';
 
 export type AnyContract =
   | SaleContract
@@ -42,6 +43,7 @@ export interface PipelineResult {
   classification: ReturnType<typeof classify>;
   ledgerEntries: LedgerEntry[];
   violations: string[];
+  shariahReviewStub: ShariahReviewRecord | null;
 }
 
 function baseEntryFields(event: IcosEvent) {
@@ -209,5 +211,14 @@ export function runPipeline(
 
   postTransaction(ledgerEntries);
 
-  return { classification, ledgerEntries, violations };
+  // Spec §12A: auto-trigger Shariah review stub when risk_flags detected
+  const shariahReviewStub: ShariahReviewRecord | null =
+    classification.risk_flags.length > 0
+      ? createShariahReviewStub(
+          event.linked_contract_id,
+          `Classifier detected risk flags: ${classification.risk_flags.join(', ')}`,
+        )
+      : null;
+
+  return { classification, ledgerEntries, violations, shariahReviewStub };
 }

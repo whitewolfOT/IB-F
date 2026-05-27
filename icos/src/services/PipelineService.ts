@@ -20,10 +20,26 @@ export class PipelineService {
       this.db.insertLedgerEntry(entry);
     }
 
-    this.db.updateContractStatus(
-      event.linked_contract_id,
-      'approved',
-    );
+    // Persist Shariah review stub when classifier detected risk flags (spec §12A)
+    if (result.shariahReviewStub) {
+      const stub = result.shariahReviewStub;
+      this.db.insertShariahReview({
+        review_id: stub.review_id,
+        related_contract_id: stub.related_contract_id,
+        reviewer_id: stub.reviewer_id,
+        triggering_reason: stub.triggering_reason,
+        legal_reasoning: stub.legal_reasoning,
+        ruling_type: stub.ruling?.ruling_type ?? null,
+        ruling_confidence: stub.ruling_confidence,
+        freeze_settlement: stub.freeze_settlement,
+        block_profit_distribution: stub.block_profit_distribution,
+        escalation_status: stub.escalation_status,
+        digital_signature: stub.digital_signature,
+        timestamp: stub.timestamp,
+      });
+    }
+
+    this.db.updateContractStatus(event.linked_contract_id, 'approved');
 
     return result;
   }

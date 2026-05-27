@@ -6,6 +6,7 @@ import { PipelineService } from '../services/PipelineService';
 import { SettlementService } from '../services/SettlementService';
 import { contractsRouter } from './routes/contracts';
 import { eventsRouter } from './routes/events';
+import { partiesRouter, assetsRouter } from './routes/parties';
 
 export function createApp(db: IcosDb) {
   const app = express();
@@ -16,6 +17,8 @@ export function createApp(db: IcosDb) {
   const pipeline = new PipelineService(db);
   const settlementSvc = new SettlementService(db);
 
+  app.use('/api/parties', partiesRouter(db));
+  app.use('/api/assets', assetsRouter(db));
   app.use('/api/contracts', contractsRouter(contracts));
   app.use('/api/events', eventsRouter(events, pipeline, settlementSvc));
 
