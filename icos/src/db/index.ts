@@ -348,4 +348,26 @@ export class IcosDb {
       ruling_json: params.ruling_json,
     });
   }
+
+  // ── Supporting Instruments (§6H) ─────────────────────────────────────────
+
+  insertInstrument(instrument: { instrument_id: string; instrument_type: string; linked_contract_id: string; data_json: string; created_at: string }): void {
+    this.db.prepare(`
+      INSERT INTO supporting_instruments (instrument_id, instrument_type, linked_contract_id, data_json, created_at)
+      VALUES (@instrument_id, @instrument_type, @linked_contract_id, @data_json, @created_at)
+    `).run(instrument);
+  }
+
+  getInstrument(instrumentId: string): Record<string, unknown> | undefined {
+    const row = this.db.prepare('SELECT * FROM supporting_instruments WHERE instrument_id = ?').get(instrumentId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, data: JSON.parse(String(row.data_json)) };
+  }
+
+  listInstrumentsForContract(contractId: string): Record<string, unknown>[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM supporting_instruments WHERE linked_contract_id = ? ORDER BY created_at ASC'
+    ).all(contractId) as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, data: JSON.parse(String(row.data_json)) }));
+  }
 }

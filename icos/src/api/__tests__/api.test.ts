@@ -604,3 +604,163 @@ describe('SettlementService — audit trail guard', () => {
     db.close();
   });
 });
+
+describe('POST /api/events — prohibited industry gate at intake', () => {
+  it('rejects event creation when asset_reference contains a prohibited industry term', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-pi-001', contract_type: 'murabaha' });
+    const res = await request(app).post('/api/events').send({
+      location: 'Dubai',
+      event_type: 'goods_delivery',
+      counterparties: ['a', 'b'],
+      linked_contract_id: 'ctr-pi-001',
+      asset_reference: 'alcohol-distribution-warehouse',
+      quantity: 100,
+      unit: 'units',
+      supporting_documents: [],
+      created_by: 'op',
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/Prohibited industry/);
+  });
+
+  it('allows event creation with a halal asset reference', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-pi-002', contract_type: 'murabaha' });
+    const res = await request(app).post('/api/events').send({
+      location: 'Amman',
+      event_type: 'goods_delivery',
+      counterparties: ['a', 'b'],
+      linked_contract_id: 'ctr-pi-002',
+      asset_reference: 'wheat-batch-2026',
+      quantity: 1000,
+      unit: 'kg',
+      supporting_documents: [],
+      created_by: 'op',
+    });
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('POST /api/instruments', () => {
+  it('creates a waad instrument linked to a contract', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-w-001', contract_type: 'murabaha' });
+
+    const res = await request(app).post('/api/instruments').send({
+      instrument_type: 'waad',
+      linked_contract_id: 'ctr-w-001',
+      promisor: 'seller-001',
+      promisee: 'buyer-001',
+      obligation_description: 'Title transfer on final payment',
+      execution_date: '2026-12-01',
+      binding_conditions: 'Final installment received',
+      revocable: false,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.instrument_type).toBe('waad');
+    expect(res.body.instrument_id).toBeTruthy();
+  });
+
+  it('creates a zakat_obligation instrument', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-z-001', contract_type: 'musharaka' });
+
+    const res = await request(app).post('/api/instruments').send({
+      instrument_type: 'zakat_obligation',
+      linked_contract_id: 'ctr-z-001',
+      nisab_asset_class: 'gold',
+      net_asset_value: 40000,
+      zakat_rate: 0.025,
+      calculated_amount: 1000,
+      due_date: '2026-12-31',
+      paid: false,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.calculated_amount).toBe(1000);
+  });
+
+  it('returns 400 for invalid instrument_type', async () => {
+    const { app } = makeApp();
+    const res = await request(app).post('/api/instruments').send({
+      instrument_type: 'invalid_type',
+      linked_contract_id: 'ctr-001',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when linked contract does not exist', async () => {
+    const { app } = makeApp();
+    const res = await request(app).post('/api/instruments').send({
+      instrument_type: 'waad',
+      linked_contract_id: 'no-such-contract',
+      promisor: 'a', promisee: 'b',
+      obligation_description: 'test', execution_date: '2026-01-01',
+      binding_conditions: 'test', revocable: false,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when instrument validation fails', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-kh-001', contract_type: 'murabaha' });
+    const res = await request(app).post('/api/instruments').send({
+      instrument_type: 'khiyar',
+      linked_contract_id: 'ctr-kh-001',
+      option_type: 'khiyar_al_shart',
+      holder: 'buyer-001',
+      duration_days: 0,
+      conditions: 'test',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/duration_days/);
+  });
+});
+
+describe('GET /api/instruments', () => {
+  it('lists instruments for a contract', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-list-inst', contract_type: 'murabaha' });
+    await request(app).post('/api/instruments').send({
+      instrument_type: 'waad',
+      linked_contract_id: 'ctr-list-inst',
+      promisor: 'a', promisee: 'b',
+      obligation_description: 'desc', execution_date: '2026-01-01',
+      binding_conditions: 'on payment', revocable: false,
+    });
+    const res = await request(app).get('/api/instruments?contract_id=ctr-list-inst');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].instrument_type).toBe('waad');
+  });
+
+  it('returns 400 when contract_id is missing', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/instruments');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/instruments/:id', () => {
+  it('returns instrument by id', async () => {
+    const { app } = makeApp();
+    await request(app).post('/api/contracts').send({ contract_id: 'ctr-gi-001', contract_type: 'murabaha' });
+    const createRes = await request(app).post('/api/instruments').send({
+      instrument_type: 'waad',
+      linked_contract_id: 'ctr-gi-001',
+      promisor: 'a', promisee: 'b',
+      obligation_description: 'test', execution_date: '2026-01-01',
+      binding_conditions: 'test', revocable: true,
+    });
+    const instrumentId = createRes.body.instrument_id;
+    const res = await request(app).get(`/api/instruments/${instrumentId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.instrument_type).toBe('waad');
+  });
+
+  it('returns 404 for unknown instrument', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/instruments/no-such-id');
+    expect(res.status).toBe(404);
+  });
+});

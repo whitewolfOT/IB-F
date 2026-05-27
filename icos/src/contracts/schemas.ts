@@ -100,3 +100,70 @@ export interface QardContract {
   guaranteed_excess?: boolean;
   hidden_return?: boolean;
 }
+
+// ── §6H Supporting Legal Instruments ─────────────────────────────────────────
+// Linked objects that modify or supplement primary contracts; not standalone.
+
+export interface WaadPromise {
+  instrument_id: string;
+  instrument_type: 'waad';
+  linked_contract_id: string;
+  promisor: string;
+  promisee: string;
+  obligation_description: string;
+  execution_date: string;
+  binding_conditions: string;
+  revocable: boolean;
+}
+
+export interface KhiyarOption {
+  instrument_id: string;
+  instrument_type: 'khiyar';
+  linked_contract_id: string;
+  option_type: 'khiyar_al_majlis' | 'khiyar_al_shart' | 'khiyar_al_aib';
+  holder: string;
+  duration_days: number;
+  conditions: string;
+  exercise_price?: number;
+}
+
+export interface ZakatObligation {
+  instrument_id: string;
+  instrument_type: 'zakat_obligation';
+  linked_contract_id: string;
+  nisab_asset_class: string;
+  net_asset_value: number;
+  zakat_rate: number;
+  calculated_amount: number;
+  due_date: string;
+  paid: boolean;
+}
+
+export interface RiskReserveInstrument {
+  instrument_id: string;
+  instrument_type: 'risk_reserve';
+  linked_contract_id: string;
+  risk_exposure: number;
+  reserve_ratio: number;
+  required_reserve: number;
+  funded_amount: number;
+  shortfall: number;
+}
+
+export interface NonComplianceEvent {
+  instrument_id: string;
+  instrument_type: 'non_compliance_event';
+  linked_contract_id: string;
+  violation_type: string;
+  severity: 'minor' | 'serious' | 'critical';
+  detected_at: string;
+  remediation_required: string;
+  resolved: boolean;
+}
+
+export type SupportingInstrument =
+  | WaadPromise
+  | KhiyarOption
+  | ZakatObligation
+  | RiskReserveInstrument
+  | NonComplianceEvent;

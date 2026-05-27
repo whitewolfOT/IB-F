@@ -7,6 +7,11 @@ import {
   validateAgencyContract,
   validateQardContract,
   validateProhibitedIndustry,
+  validateWaad,
+  validateKhiyar,
+  validateZakatObligation,
+  validateRiskReserve,
+  validateNonComplianceEvent,
 } from '../validators';
 import {
   SaleContract,
@@ -16,6 +21,11 @@ import {
   IjarahContract,
   AgencyContract,
   QardContract,
+  WaadPromise,
+  KhiyarOption,
+  ZakatObligation,
+  RiskReserveInstrument,
+  NonComplianceEvent,
 } from '../schemas';
 
 // --- SaleContract ---
@@ -529,5 +539,147 @@ describe('validateProhibitedIndustry', () => {
     const result = validateProhibitedIndustry('Financial derivatives with gharar elements');
     expect(result.valid).toBe(false);
     expect(result.violations).toContain('Prohibited industry detected: gharar');
+  });
+});
+
+// ── §6H Supporting Legal Instrument Validators ────────────────────────────────
+
+describe('validateWaad', () => {
+  const validWaad: WaadPromise = {
+    instrument_id: 'w-001',
+    instrument_type: 'waad',
+    linked_contract_id: 'ctr-001',
+    promisor: 'seller-001',
+    promisee: 'buyer-001',
+    obligation_description: 'Seller promises to deliver title on full payment',
+    execution_date: '2026-12-01',
+    binding_conditions: 'Upon receipt of final installment',
+    revocable: false,
+  };
+
+  it('passes for a valid waad', () => {
+    expect(validateWaad(validWaad).valid).toBe(true);
+  });
+
+  it('requires promisor and promisee', () => {
+    const result = validateWaad({ ...validWaad, promisor: '', promisee: '' });
+    expect(result.valid).toBe(false);
+    expect(result.violations).toContain('promisor is required');
+    expect(result.violations).toContain('promisee is required');
+  });
+
+  it('requires obligation_description and execution_date', () => {
+    const result = validateWaad({ ...validWaad, obligation_description: '', execution_date: '' });
+    expect(result.valid).toBe(false);
+    expect(result.violations.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('validateKhiyar', () => {
+  const validKhiyar: KhiyarOption = {
+    instrument_id: 'k-001',
+    instrument_type: 'khiyar',
+    linked_contract_id: 'ctr-001',
+    option_type: 'khiyar_al_shart',
+    holder: 'buyer-001',
+    duration_days: 3,
+    conditions: 'Option expires after inspection period',
+  };
+
+  it('passes for a valid khiyar', () => {
+    expect(validateKhiyar(validKhiyar).valid).toBe(true);
+  });
+
+  it('rejects non-positive duration_days', () => {
+    const result = validateKhiyar({ ...validKhiyar, duration_days: 0 });
+    expect(result.valid).toBe(false);
+    expect(result.violations).toContain('duration_days must be positive');
+  });
+});
+
+describe('validateZakatObligation', () => {
+  const validZakat: ZakatObligation = {
+    instrument_id: 'z-001',
+    instrument_type: 'zakat_obligation',
+    linked_contract_id: 'ctr-001',
+    nisab_asset_class: 'gold',
+    net_asset_value: 100000,
+    zakat_rate: 0.025,
+    calculated_amount: 2500,
+    due_date: '2026-12-31',
+    paid: false,
+  };
+
+  it('passes for a valid zakat obligation', () => {
+    expect(validateZakatObligation(validZakat).valid).toBe(true);
+  });
+
+  it('rejects calculated_amount that does not match net_asset_value × zakat_rate', () => {
+    const result = validateZakatObligation({ ...validZakat, calculated_amount: 999 });
+    expect(result.valid).toBe(false);
+    expect(result.violations.some(v => v.includes('calculated_amount'))).toBe(true);
+  });
+
+  it('rejects invalid zakat_rate (>1)', () => {
+    const result = validateZakatObligation({ ...validZakat, zakat_rate: 1.5, calculated_amount: 150000 });
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe('validateRiskReserve', () => {
+  const validReserve: RiskReserveInstrument = {
+    instrument_id: 'rr-001',
+    instrument_type: 'risk_reserve',
+    linked_contract_id: 'ctr-001',
+    risk_exposure: 200000,
+    reserve_ratio: 0.05,
+    required_reserve: 10000,
+    funded_amount: 10000,
+    shortfall: 0,
+  };
+
+  it('passes for a valid risk reserve', () => {
+    expect(validateRiskReserve(validReserve).valid).toBe(true);
+  });
+
+  it('rejects when required_reserve does not match risk_exposure × reserve_ratio', () => {
+    const result = validateRiskReserve({ ...validReserve, required_reserve: 999 });
+    expect(result.valid).toBe(false);
+    expect(result.violations.some(v => v.includes('required_reserve'))).toBe(true);
+  });
+
+  it('rejects when shortfall is wrong', () => {
+    const result = validateRiskReserve({ ...validReserve, funded_amount: 5000, shortfall: 0 });
+    expect(result.valid).toBe(false);
+    expect(result.violations.some(v => v.includes('shortfall'))).toBe(true);
+  });
+});
+
+describe('validateNonComplianceEvent', () => {
+  const validNce: NonComplianceEvent = {
+    instrument_id: 'nce-001',
+    instrument_type: 'non_compliance_event',
+    linked_contract_id: 'ctr-001',
+    violation_type: 'riba_element_detected',
+    severity: 'critical',
+    detected_at: '2026-05-01T10:00:00Z',
+    remediation_required: 'Remove fixed interest clause',
+    resolved: false,
+  };
+
+  it('passes for a valid non-compliance event', () => {
+    expect(validateNonComplianceEvent(validNce).valid).toBe(true);
+  });
+
+  it('rejects invalid severity', () => {
+    const result = validateNonComplianceEvent({ ...validNce, severity: 'unknown' as 'minor' });
+    expect(result.valid).toBe(false);
+    expect(result.violations).toContain('severity must be minor, serious, or critical');
+  });
+
+  it('requires violation_type and remediation_required', () => {
+    const result = validateNonComplianceEvent({ ...validNce, violation_type: '', remediation_required: '' });
+    expect(result.valid).toBe(false);
+    expect(result.violations.length).toBeGreaterThanOrEqual(2);
   });
 });

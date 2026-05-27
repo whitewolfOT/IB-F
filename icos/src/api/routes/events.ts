@@ -6,6 +6,7 @@ import { ApprovalState, OrgRole } from '../../types';
 import { AnyContract } from '../../pipeline';
 import { TransactionDescriptor } from '../../classification';
 import { PartnershipContract } from '../../contracts/schemas';
+import { validateProhibitedIndustry } from '../../contracts/validators';
 
 export function eventsRouter(
   events: EventService,
@@ -24,6 +25,15 @@ export function eventsRouter(
       if (!linked_contract_id || !counterparties || !event_type) {
         res.status(400).json({ error: 'linked_contract_id, counterparties, and event_type are required' });
         return;
+      }
+
+      // Prohibited industry gate at intake (spec §14)
+      if (asset_reference) {
+        const industryCheck = validateProhibitedIndustry(String(asset_reference));
+        if (!industryCheck.valid) {
+          res.status(422).json({ error: `Prohibited industry in asset_reference: ${industryCheck.violations.join('; ')}` });
+          return;
+        }
       }
 
       const event = events.create({

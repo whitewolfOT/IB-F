@@ -21,7 +21,7 @@ import {
   AgencyContract,
   QardContract,
 } from '../contracts/schemas';
-import { murabahaProfit, leaseRevenue } from '../formulas';
+import { murabahaProfit, leaseRevenue, riskReserveRequirement } from '../formulas';
 import { createShariahReviewStub, ShariahReviewRecord } from '../shariah';
 import { detectFromContract } from '../validation';
 import { scoreCompliance, ComplianceScore } from '../compliance';
@@ -52,6 +52,7 @@ export interface PipelineResult {
   ghararViolations: string[];
   maysirViolations: string[];
   leaseRevenueMetrics?: { earnedRevenue: number; unearnedLiability: number };
+  riskReserve?: number;
 }
 
 function baseEntryFields(event: IcosEvent) {
@@ -131,6 +132,7 @@ export function runPipeline(
   const ledgerEntries: LedgerEntry[] = [];
   let violations: string[] = [];
   let ijarahLeaseMetrics: { earnedRevenue: number; unearnedLiability: number } | undefined;
+  let partnershipRiskReserve: number | undefined;
 
   switch (classification.contract_type) {
     case 'murabaha':
@@ -205,6 +207,17 @@ export function runPipeline(
         credit_account: SubledgerType.receivables,         // partner's contributed amount
         amount: capitalTotal,
       }));
+      // §9H: 5% risk reserve on total capital exposure
+      const reserveAmount = riskReserveRequirement(capitalTotal, 0.05);
+      if (reserveAmount > 0) {
+        ledgerEntries.push(createLedgerEntry({
+          ...base,
+          debit_account: SubledgerType.compliance_reserve, // risk reserve funded
+          credit_account: SubledgerType.partnership_capital,
+          amount: reserveAmount,
+        }));
+      }
+      partnershipRiskReserve = reserveAmount;
       break;
     }
 
@@ -277,5 +290,5 @@ export function runPipeline(
         )
       : null;
 
-  return { classification, ledgerEntries, violations, shariahReviewStub, complianceScore, ribaViolations, ghararViolations, maysirViolations, leaseRevenueMetrics: ijarahLeaseMetrics };
+  return { classification, ledgerEntries, violations, shariahReviewStub, complianceScore, ribaViolations, ghararViolations, maysirViolations, leaseRevenueMetrics: ijarahLeaseMetrics, riskReserve: partnershipRiskReserve };
 }

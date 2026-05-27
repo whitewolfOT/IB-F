@@ -138,4 +138,14 @@ CREATE TABLE IF NOT EXISTS shariah_override_events (
   expiration_conditions TEXT NOT NULL,
   timestamp             TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS supporting_instruments (
+  instrument_id         TEXT PRIMARY KEY,
+  instrument_type       TEXT NOT NULL CHECK (instrument_type IN (
+    'waad','khiyar','zakat_obligation','risk_reserve','non_compliance_event'
+  )),
+  linked_contract_id    TEXT NOT NULL REFERENCES contracts(contract_id),
+  data_json             TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
 `;

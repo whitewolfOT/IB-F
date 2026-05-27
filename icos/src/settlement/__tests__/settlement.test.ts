@@ -141,3 +141,44 @@ describe('settle', () => {
     expect(result.final_state).toBe(ApprovalState.settled);
   });
 });
+
+describe('settle — §9I net real profit', () => {
+  const validMusharaka: PartnershipContract = {
+    contract_id: 'ctr-nrp-001',
+    contract_type: 'musharaka',
+    partners: ['pA', 'pB'],
+    capital_contribution_by_partner: { pA: 60000, pB: 40000 },
+    labor_contribution_by_partner: { pA: 'mgmt', pB: 'ops' },
+    profit_ratio_by_partner: { pA: 60, pB: 40 },
+    loss_ratio_by_partner: { pA: 60, pB: 40 },
+    management_authority: { pA: 'full', pB: 'limited' },
+    liquidation_rules: 'pro-rata',
+    negligence_rules: 'negligent bears loss',
+    withdrawal_rules: '30 days',
+  };
+
+  it('includes net_real_profit and realized_profit in settlement record', () => {
+    const event = makeApprovedEvent(validMusharaka.contract_id);
+    const result = settle(event, validMusharaka, 50000);
+    expect(result.realized_profit).toBe(50000);
+    expect(result.net_real_profit).toBe(50000); // no costs or losses
+    expect(result.distributions['pA']).toBeCloseTo(30000); // 60%
+    expect(result.distributions['pB']).toBeCloseTo(20000); // 40%
+  });
+
+  it('deducts operational costs and losses from distributable profit (§9I)', () => {
+    const event = makeApprovedEvent(validMusharaka.contract_id);
+    // revenue=50000, operationalCosts=5000, assetLosses=3000, settlementLosses=2000 → net=40000
+    const result = settle(event, validMusharaka, 50000, undefined, 5000, 3000, 2000);
+    expect(result.net_real_profit).toBe(40000);
+    expect(result.distributions['pA']).toBeCloseTo(24000); // 60% of 40000
+    expect(result.distributions['pB']).toBeCloseTo(16000); // 40% of 40000
+  });
+
+  it('distributes zero when net real profit is negative (losses exceed revenue)', () => {
+    const event = makeApprovedEvent(validMusharaka.contract_id);
+    const result = settle(event, validMusharaka, 10000, undefined, 0, 20000, 0);
+    expect(result.net_real_profit).toBe(-10000);
+    expect(result.ledger_entries).toHaveLength(0); // no distribution when profit ≤ 0
+  });
+});

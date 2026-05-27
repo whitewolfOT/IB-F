@@ -139,8 +139,10 @@ describe('runPipeline - mudaraba/musharaka flow', () => {
     const result = runPipeline(event, validMusharaka, musharakaDescriptor);
     expect(result.classification.contract_type).toBe('musharaka');
     expect(result.violations).toHaveLength(0);
-    expect(result.ledgerEntries).toHaveLength(1);
-    expect(result.ledgerEntries[0].amount).toBe(100000); // 60000 + 40000
+    // 2 entries: capital posting + 5% risk reserve (§9H)
+    expect(result.ledgerEntries).toHaveLength(2);
+    expect(result.ledgerEntries[0].amount).toBe(100000); // 60000 + 40000 capital
+    expect(result.riskReserve).toBeCloseTo(5000); // 5% of 100000
   });
 
   it('ledger entry for musharaka uses partnership_capital debit', () => {
@@ -157,6 +159,16 @@ describe('runPipeline - mudaraba/musharaka flow', () => {
       guaranteed_return: true,
     };
     expect(() => runPipeline(event, invalidContract, musharakaDescriptor)).toThrow(PipelineError);
+  });
+
+  it('risk reserve entry (§9H) is posted to compliance_reserve subledger', () => {
+    const event = makeApprovedEvent(validMusharaka.contract_id);
+    const result = runPipeline(event, validMusharaka, musharakaDescriptor);
+    const reserveEntry = result.ledgerEntries.find(e => e.debit_account === 'compliance_reserve');
+    expect(reserveEntry).toBeDefined();
+    expect(reserveEntry!.credit_account).toBe('partnership_capital');
+    expect(reserveEntry!.amount).toBeCloseTo(5000); // 5% of 100000
+    expect(result.riskReserve).toBeCloseTo(5000);
   });
 
   it('throws PipelineError when classification has violations', () => {
