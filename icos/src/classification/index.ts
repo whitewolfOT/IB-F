@@ -25,6 +25,7 @@ export interface ClassificationResult {
 const REQUIRED_FIELDS: Record<string, string[]> = {
   murabaha: ['ownership_transfer', 'immediate_delivery', 'asset_description', 'purchase_cost', 'sale_price', 'possession_status', 'requires_cost_disclosure'],
   spot_sale: ['ownership_transfer', 'immediate_delivery', 'asset_description', 'quantity', 'sale_price'],
+  deferred_payment_sale: ['ownership_transfer', 'asset_description', 'quantity', 'sale_price', 'delivery_date'],
   salam: ['ownership_transfer', 'payment_timing', 'goods_standardized', 'delivery_date', 'delivery_location', 'payment_amount'],
   istisna: ['ownership_transfer', 'manufactured_later', 'asset_specification', 'milestone_schedule', 'delivery_requirements'],
   ijarah: ['usufruct_transferred', 'leased_asset', 'lease_duration', 'rent_schedule', 'maintenance_obligations'],
@@ -59,6 +60,9 @@ export function classify(descriptor: TransactionDescriptor): ClassificationResul
       pathCount = 1;
     } else if (descriptor.goods_standardized && descriptor.payment_timing === 'immediate') {
       contract_type = 'salam';
+      pathCount = 1;
+    } else if (descriptor.payment_timing === 'deferred') {
+      contract_type = 'deferred_payment_sale';
       pathCount = 1;
     } else {
       contract_type = 'salam';

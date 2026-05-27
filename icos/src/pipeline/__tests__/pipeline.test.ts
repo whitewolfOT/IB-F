@@ -301,6 +301,67 @@ describe('runPipeline - compliance scoring gate', () => {
   });
 });
 
+describe('runPipeline - prohibited industry gate', () => {
+  it('throws PipelineError when murabaha asset_description contains prohibited keyword', () => {
+    const event = makeApprovedEvent('ctr-prohibited-001');
+    const prohibitedContract: SaleContract = {
+      ...validMurabaha,
+      contract_id: 'ctr-prohibited-001',
+      asset_description: 'Grade A alcohol distillery equipment',
+    };
+    expect(() => runPipeline(event, prohibitedContract, murabahaDescriptor)).toThrow(PipelineError);
+    expect(() => runPipeline(event, prohibitedContract, murabahaDescriptor)).toThrow(/Prohibited industry/);
+  });
+
+  it('throws PipelineError when salam commodity_type contains prohibited keyword', () => {
+    const event = createEvent({
+      location: 'Test',
+      event_type: 'payment_settlement',
+      counterparties: ['buyer-001', 'seller-001'],
+      linked_contract_id: 'ctr-salam-prohibited',
+      asset_reference: 'ref',
+      quantity: 1000,
+      unit: 'USD',
+      supporting_documents: [],
+      created_by: 'user',
+    });
+    (event as { approval_state: ApprovalState }).approval_state = ApprovalState.approved;
+    const prohibitedSalam: SalamContract = {
+      contract_id: 'ctr-salam-prohibited',
+      contract_type: 'salam',
+      buyer: 'buyer-001',
+      seller: 'seller-001',
+      commodity_type: 'gambling tokens',
+      quantity: 1000,
+      quality_specification: 'standard',
+      payment_amount: 5000,
+      payment_timestamp: '2026-01-01T00:00:00Z',
+      payment_completed: true,
+      delivery_date: '2026-09-01',
+      delivery_location: 'Warehouse',
+      commodity_specification_is_ambiguous: false,
+    };
+    const salamDesc: TransactionDescriptor = {
+      ownership_transfer: true,
+      immediate_delivery: false,
+      goods_standardized: true,
+      manufactured_later: false,
+      usufruct_transferred: false,
+      single_capital_provider: false,
+      labor_from_second_party: false,
+      multiple_capital_providers: false,
+      payment_timing: 'immediate',
+      asset_fields_present: ['ownership_transfer', 'payment_timing', 'goods_standardized', 'delivery_date', 'delivery_location', 'payment_amount'],
+    };
+    expect(() => runPipeline(event, prohibitedSalam, salamDesc)).toThrow(/Prohibited industry/);
+  });
+
+  it('passes when asset_description does not contain any prohibited keyword', () => {
+    const event = makeApprovedEvent(validMurabaha.contract_id);
+    expect(() => runPipeline(event, validMurabaha, murabahaDescriptor)).not.toThrow();
+  });
+});
+
 describe('runPipeline - ijarah flow', () => {
   const validIjarah: IjarahContract = {
     contract_id: 'ctr-ijarah-001',

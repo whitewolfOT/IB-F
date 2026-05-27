@@ -88,7 +88,7 @@ describe('classify - salam branch', () => {
       immediate_delivery: false,
       goods_standardized: false,
       manufactured_later: false,
-      payment_timing: 'deferred',
+      payment_timing: 'installment', // not 'immediate' (salam) and not 'deferred' (deferred_payment_sale)
       asset_fields_present: [],
     };
     const result = classify(descriptor);
@@ -224,6 +224,38 @@ describe('classify - wakala branch', () => {
     };
     const result = classify(descriptor);
     expect(result.contract_type).toBe('qard');
+  });
+});
+
+describe('classify - deferred_payment_sale branch', () => {
+  it('classifies as deferred_payment_sale when ownership transfer, non-immediate delivery, and payment is deferred', () => {
+    const descriptor: TransactionDescriptor = {
+      ...base,
+      ownership_transfer: true,
+      immediate_delivery: false,
+      manufactured_later: false,
+      goods_standardized: false,
+      payment_timing: 'deferred',
+      asset_fields_present: ['ownership_transfer', 'asset_description', 'quantity', 'sale_price', 'delivery_date'],
+    };
+    const result = classify(descriptor);
+    expect(result.contract_type).toBe('deferred_payment_sale');
+    expect(result.shariah_status).toBe('compliant');
+    expect(result.violations).toHaveLength(0);
+    expect(result.required_missing_fields).toHaveLength(0);
+  });
+
+  it('deferred_payment_sale does not trigger salam risk flag', () => {
+    const descriptor: TransactionDescriptor = {
+      ...base,
+      ownership_transfer: true,
+      immediate_delivery: false,
+      manufactured_later: false,
+      payment_timing: 'deferred',
+      asset_fields_present: ['ownership_transfer', 'asset_description', 'quantity', 'sale_price', 'delivery_date'],
+    };
+    const result = classify(descriptor);
+    expect(result.risk_flags).not.toContain('ownership_transfer_without_clear_delivery_terms');
   });
 });
 

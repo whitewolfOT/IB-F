@@ -10,6 +10,7 @@ import {
   validateIjarahContract,
   validateAgencyContract,
   validateQardContract,
+  validateProhibitedIndustry,
 } from '../contracts/validators';
 import {
   SaleContract,
@@ -101,6 +102,27 @@ export function runPipeline(
       `Gharar: [${ghararViolations.join('; ')}]; ` +
       `Maysir: [${maysirViolations.join('; ')}]`,
     );
+  }
+
+  // Step 1.6: Prohibited industry check (spec §11A / §6 taxonomy)
+  const ct = classification.contract_type;
+  let industryDesc: string | undefined;
+  if (ct === 'murabaha' || ct === 'spot_sale' || ct === 'deferred_payment_sale') {
+    industryDesc = (contract as SaleContract).asset_description;
+  } else if (ct === 'salam' || ct === 'parallel_salam') {
+    industryDesc = (contract as SalamContract).commodity_type;
+  } else if (ct === 'istisna' || ct === 'parallel_istisna') {
+    industryDesc = (contract as IstisnaContract).asset_specification;
+  } else if (ct === 'ijarah' || ct === 'ijarah_muntahia_bittamleek') {
+    industryDesc = (contract as IjarahContract).leased_asset;
+  } else if (ct === 'wakala' || ct === 'wakala_bi_al_istithmar') {
+    industryDesc = (contract as AgencyContract).authorized_scope;
+  }
+  if (industryDesc) {
+    const industryCheck = validateProhibitedIndustry(industryDesc);
+    if (!industryCheck.valid) {
+      throw new PipelineError(`Prohibited industry: ${industryCheck.violations.join('; ')}`);
+    }
   }
 
   // Step 2: Validate contract and produce ledger entries
