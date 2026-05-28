@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb, DbException } from '../../db';
+import { IIcosDb, DbException } from '../../db/interface';
 import { OrgRole } from '../../types';
 import {
   ExceptionType, ExceptionScope,
   canSubmitException, getRequiredApprovers, getCurrentStep,
 } from '../../exceptions';
 
-export function exceptionsRouter(db: IcosDb): Router {
+export function exceptionsRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.post('/', (req: Request, res: Response) => {
@@ -197,7 +197,7 @@ export function exceptionsRouter(db: IcosDb): Router {
   return router;
 }
 
-export function eventExceptionsRouter(db: IcosDb): Router {
+export function eventExceptionsRouter(db: IIcosDb): Router {
   const router = Router({ mergeParams: true });
 
   router.get('/', (req: Request, res: Response) => {
