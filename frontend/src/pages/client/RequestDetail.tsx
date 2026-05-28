@@ -7,6 +7,7 @@ import PipelineStrip from '../../components/PipelineStrip';
 import AuditTimeline from '../../components/AuditTimeline';
 import ScoreRing from '../../components/ScoreRing';
 import Spinner from '../../components/ui/Spinner';
+import FreezeAlert from '../../components/FreezeAlert';
 import { ApprovalState } from '../../types/index';
 
 const RequestDetail: React.FC = () => {
@@ -37,6 +38,14 @@ const RequestDetail: React.FC = () => {
       <Card title="Pipeline">
         <PipelineStrip currentState={event.state as ApprovalState} />
       </Card>
+
+      {event.freezeState && (
+        <FreezeAlert
+          settlement_frozen={event.freezeState.settlement_frozen}
+          profit_distribution_blocked={event.freezeState.profit_distribution_blocked}
+          freeze_reason={event.freezeState.freeze_reason}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2" title="Details">

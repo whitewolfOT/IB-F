@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { IIcosDb } from '../../db/interface';
-import { generateAuditTrailPdf, generateRulingPdf } from '../../pdf';
+import { generateAuditTrailPdf, generateRulingPdf, generateLedgerReconciliationPdf } from '../../pdf';
+import { verifyLedgerEntryHash } from '../../ledger';
 import { requireRole } from '../../auth/middleware';
 import { OrgRole } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -70,6 +71,51 @@ export function exportsRouter(db: IIcosDb): Router {
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="ruling-${req.params.id}.pdf"`);
+        res.send(pdf);
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    });
+
+  router.get('/ledger/reconciliation',
+    requireRole(OrgRole.financial_controller, OrgRole.auditor, OrgRole.compliance_officer),
+    (req: Request, res: Response) => {
+      try {
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const since = typeof req.query.since === 'string' ? req.query.since : thirtyDaysAgo;
+        const until = typeof req.query.until === 'string' ? req.query.until : now.toISOString();
+
+        const summary = db.getLedgerSummary(since, until);
+        const rawEntries = db.listAllLedgerEntries({ since, until });
+        const entries = rawEntries.map(e => {
+          let integrity_verified = false;
+          try { integrity_verified = verifyLedgerEntryHash(e); } catch { integrity_verified = false; }
+          return { ...(e as unknown as Record<string, unknown>), integrity_verified };
+        });
+
+        const pdf = generateLedgerReconciliationPdf({
+          entries,
+          summary,
+          since,
+          until,
+          generatedBy: req.user!.user_id,
+          generatedAt: now.toISOString(),
+        });
+
+        db.insertAccessLog({
+          log_id: uuidv4(),
+          user_id: req.user!.user_id,
+          action: 'export_pdf',
+          resource_type: 'ledger_reconciliation',
+          resource_id: 'all',
+          ip_address: req.ip ?? null,
+          user_agent: String(req.headers['user-agent'] ?? ''),
+          accessed_at: now.toISOString(),
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="ledger-reconciliation.pdf"');
         res.send(pdf);
       } catch (err) {
         res.status(500).json({ error: (err as Error).message });

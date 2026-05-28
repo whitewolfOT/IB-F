@@ -1,6 +1,12 @@
 import client from './client';
 import type { ApprovalState } from '../types/index';
 
+export interface FreezeState {
+  settlement_frozen: boolean;
+  profit_distribution_blocked: boolean;
+  freeze_reason: string | null;
+}
+
 export interface EventRecord {
   event_id: string;
   state: ApprovalState;
@@ -16,6 +22,7 @@ export interface EventRecord {
   compliance_score?: number;
   contract_id?: string;
   review_id?: string;
+  freezeState?: FreezeState;
   [key: string]: unknown;
 }
 

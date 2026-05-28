@@ -254,7 +254,7 @@ CREATE TABLE IF NOT EXISTS shariah_reviewers (
   full_name                TEXT NOT NULL,
   credentials              TEXT NOT NULL,
   madhhab                  TEXT NOT NULL CHECK (madhhab IN (
-    'Hanafi','Maliki','Shafii','Hanbali','Jafari','Other'
+    'Hanafi','Maliki','Shafii','Hanbali'
   )),
   jurisdiction             TEXT NOT NULL,
   appointment_period_start TEXT NOT NULL,

@@ -153,6 +153,39 @@ export class IcosDb {
     return Array.from(this.ledgerEntries.values()).filter(e => e.linked_contract_id === contractId);
   }
 
+  listAllLedgerEntries(filters?: {
+    subledger_type?: string;
+    since?: string;
+    until?: string;
+    contract_id?: string;
+    event_id?: string;
+  }): LedgerEntry[] {
+    let entries = Array.from(this.ledgerEntries.values());
+    if (filters?.subledger_type) entries = entries.filter(e => e.debit_account === filters.subledger_type || e.credit_account === filters.subledger_type);
+    if (filters?.since) entries = entries.filter(e => e.timestamp >= filters.since!);
+    if (filters?.until) entries = entries.filter(e => e.timestamp <= filters.until!);
+    if (filters?.contract_id) entries = entries.filter(e => e.linked_contract_id === filters.contract_id);
+    if (filters?.event_id) entries = entries.filter(e => e.originating_event_id === filters.event_id);
+    return entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  getLedgerSummary(since?: string, until?: string): {
+    total_debits: number;
+    total_credits: number;
+    entry_count: number;
+    balanced: boolean;
+    imbalance: number;
+  } {
+    let entries = Array.from(this.ledgerEntries.values());
+    if (since) entries = entries.filter(e => e.timestamp >= since);
+    if (until) entries = entries.filter(e => e.timestamp <= until);
+    if (entries.length === 0) return { total_debits: 0, total_credits: 0, entry_count: 0, balanced: true, imbalance: 0 };
+    const total_debits = entries.reduce((sum, e) => sum + e.amount, 0);
+    const total_credits = entries.reduce((sum, e) => sum + e.amount, 0);
+    const imbalance = Math.abs(total_debits - total_credits);
+    return { total_debits, total_credits, entry_count: entries.length, balanced: imbalance < 0.01, imbalance };
+  }
+
   // ── Approval Audit Trail ──────────────────────────────────────────────────
 
   insertApprovalAuditEvent(auditEvent: ApprovalAuditEvent): void {
@@ -194,7 +227,10 @@ export class IcosDb {
   }
 
   getShariahReviewsForContract(contractId: string): unknown[] {
-    return Array.from(this.shariahReviews.values()).filter(r => r.related_contract_id === contractId);
+    const contract_type = this.contracts.get(contractId)?.contract_type ?? null;
+    return Array.from(this.shariahReviews.values())
+      .filter(r => r.related_contract_id === contractId)
+      .map(r => ({ ...r, contract_type }));
   }
 
   getShariahReview(reviewId: string): Record<string, unknown> | undefined {
@@ -202,7 +238,10 @@ export class IcosDb {
   }
 
   listShariahReviews(): unknown[] {
-    return Array.from(this.shariahReviews.values());
+    return Array.from(this.shariahReviews.values()).map(r => ({
+      ...r,
+      contract_type: (this.contracts.get((r as Record<string, unknown>).related_contract_id as string) ?? {}).contract_type ?? null,
+    }));
   }
 
   insertShariahOverride(override: {

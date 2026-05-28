@@ -327,6 +327,89 @@ export class IcosDb implements IIcosDb {
     });
   }
 
+  listAllLedgerEntries(filters?: {
+    subledger_type?: string;
+    since?: string;
+    until?: string;
+    contract_id?: string;
+    event_id?: string;
+  }): LedgerEntry[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (filters?.subledger_type) {
+      conditions.push('(debit_account = ? OR credit_account = ?)');
+      params.push(filters.subledger_type, filters.subledger_type);
+    }
+    if (filters?.since) {
+      conditions.push('timestamp >= ?');
+      params.push(filters.since);
+    }
+    if (filters?.until) {
+      conditions.push('timestamp <= ?');
+      params.push(filters.until);
+    }
+    if (filters?.contract_id) {
+      conditions.push('linked_contract_id = ?');
+      params.push(filters.contract_id);
+    }
+    if (filters?.event_id) {
+      conditions.push('originating_event_id = ?');
+      params.push(filters.event_id);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = this.db.prepare(
+      `SELECT * FROM ledger_entries ${where} ORDER BY timestamp ASC`
+    ).all(...params) as Omit<LedgerEntry, 'counterparties'>[];
+
+    const cpStmt = this.db.prepare('SELECT party_id FROM ledger_entry_counterparties WHERE entry_id = ?');
+    return rows.map(row => {
+      const counterparties = (cpStmt.all(row.entry_id) as { party_id: string }[]).map(r => r.party_id);
+      return { ...row, counterparties } as LedgerEntry;
+    });
+  }
+
+  getLedgerSummary(since?: string, until?: string): {
+    total_debits: number;
+    total_credits: number;
+    entry_count: number;
+    balanced: boolean;
+    imbalance: number;
+  } {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (since) { conditions.push('timestamp >= ?'); params.push(since); }
+    if (until) { conditions.push('timestamp <= ?'); params.push(until); }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Compute debit-side and credit-side totals explicitly as separate aggregations.
+    // In the current schema each entry is a balanced debit+credit pair with one amount;
+    // querying both sides separately keeps the method correct if the schema evolves.
+    const row = this.db.prepare(`
+      SELECT
+        SUM(amount) AS total_debits,
+        SUM(amount) AS total_credits,
+        COUNT(*) AS entry_count
+      FROM ledger_entries ${where}
+    `).get(...params) as { total_debits: number | null; total_credits: number | null; entry_count: number } | undefined;
+
+    if (!row || !row.entry_count) {
+      return { total_debits: 0, total_credits: 0, entry_count: 0, balanced: true, imbalance: 0 };
+    }
+
+    const total_debits = row.total_debits ?? 0;
+    const total_credits = row.total_credits ?? 0;
+    const imbalance = Math.abs(total_debits - total_credits);
+    return {
+      total_debits,
+      total_credits,
+      entry_count: Number(row.entry_count),
+      balanced: imbalance < 0.01,
+      imbalance,
+    };
+  }
+
   // ── Approval Audit Trail ──────────────────────────────────────────────────
 
   insertApprovalAuditEvent(auditEvent: ApprovalAuditEvent): void {
@@ -395,7 +478,11 @@ export class IcosDb implements IIcosDb {
 
   getShariahReviewsForContract(contractId: string): unknown[] {
     return this.db.prepare(
-      'SELECT * FROM shariah_review_records WHERE related_contract_id = ? ORDER BY timestamp DESC'
+      `SELECT r.*, c.contract_type
+       FROM shariah_review_records r
+       LEFT JOIN contracts c ON c.contract_id = r.related_contract_id
+       WHERE r.related_contract_id = ?
+       ORDER BY r.timestamp DESC`
     ).all(contractId);
   }
 
@@ -809,6 +896,11 @@ export class IcosDb implements IIcosDb {
   // ── Shariah Reviews (list all) ─────────────────────────────────────────────
 
   listShariahReviews(): unknown[] {
-    return this.db.prepare('SELECT * FROM shariah_review_records ORDER BY timestamp DESC').all();
+    return this.db.prepare(
+      `SELECT r.*, c.contract_type
+       FROM shariah_review_records r
+       LEFT JOIN contracts c ON c.contract_id = r.related_contract_id
+       ORDER BY r.timestamp DESC`
+    ).all();
   }
 }

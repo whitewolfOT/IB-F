@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { ShariahService } from '../../services/ShariahService';
-import { RulingInput, RulingState, EffectiveScope, ShariahOverrideEvent } from '../../shariah';
+import { RulingInput, RulingState, EffectiveScope, ShariahOverrideEvent, MADHHAB_CONTRACT_ALIGNMENT } from '../../shariah';
 import { requireRole } from '../../auth/middleware';
 import { OrgRole } from '../../types';
 
@@ -30,13 +30,14 @@ export function reviewsRouter(shariah: ShariahService): Router {
 
       let reviews = shariah.listReviews(contractId);
 
-      // If filter requested, look up reviewer's madhhab and apply contract-type alignment
       if (madhhabFilter && req.user) {
         const reviewerProfile = shariah.getReviewerByUserId(req.user.user_id);
         if (reviewerProfile) {
-          // All madhhabs support all pilot contract types — filter is a toggle preference.
-          // No hard blocks in Phase 3 per the plan; Phase 4 will add hard alignment rules.
-          void reviewerProfile; // madhhab available at reviewerProfile.madhhab
+          const allowed = MADHHAB_CONTRACT_ALIGNMENT[reviewerProfile.madhhab] ?? [];
+          reviews = reviews.filter((r: unknown) => {
+            const ct = (r as Record<string, unknown>).contract_type as string | null;
+            return !ct || allowed.includes(ct);
+          });
         }
       }
 

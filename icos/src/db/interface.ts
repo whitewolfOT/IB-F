@@ -183,6 +183,20 @@ export interface IIcosDb {
   finalizeLedgerEntry(entryId: string): void;
   attemptLedgerUpdate(entryId: string, amount: number): void;
   getLedgerEntriesForContract(contractId: string): LedgerEntry[];
+  listAllLedgerEntries(filters?: {
+    subledger_type?: string;
+    since?: string;
+    until?: string;
+    contract_id?: string;
+    event_id?: string;
+  }): LedgerEntry[];
+  getLedgerSummary(since?: string, until?: string): {
+    total_debits: number;
+    total_credits: number;
+    entry_count: number;
+    balanced: boolean;
+    imbalance: number;
+  };
 
   // Approval Audit Trail
   insertApprovalAuditEvent(auditEvent: ApprovalAuditEvent): void;

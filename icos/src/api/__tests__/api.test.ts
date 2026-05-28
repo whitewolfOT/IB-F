@@ -508,6 +508,78 @@ describe('GET /api/events', () => {
   });
 });
 
+describe('GET /api/events/:id — freezeState', () => {
+  it('returns freezeState.settlement_frozen: false when no shariah reviews exist', async () => {
+    const { app, db } = makeApp();
+    db.insertContract({
+      contract_id: 'ctr-freeze-001', contract_type: 'murabaha',
+      status: 'draft', shariah_score: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    const createRes = await request(app)
+      .post('/api/events')
+      .set('Authorization', `Bearer ${masterToken()}`)
+      .send({
+        location: 'Dubai', event_type: 'goods_delivery',
+        counterparties: ['a', 'b'], linked_contract_id: 'ctr-freeze-001',
+        asset_reference: 'ref', quantity: 10, unit: 'kg',
+        supporting_documents: [], created_by: 'op',
+      });
+    expect(createRes.status).toBe(201);
+    const eventId = createRes.body.event_id;
+
+    const res = await request(app)
+      .get(`/api/events/${eventId}`)
+      .set('Authorization', `Bearer ${masterToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.freezeState.settlement_frozen).toBe(false);
+    expect(res.body.freezeState.freeze_reason).toBeNull();
+  });
+
+  it('returns freezeState.settlement_frozen: true after non-compliant ruling with freeze_settlement', async () => {
+    const { app, db } = makeApp();
+    const contractId = 'ctr-freeze-002';
+    const reviewId = 'rev-freeze-001';
+    db.insertContract({
+      contract_id: contractId, contract_type: 'murabaha',
+      status: 'draft', shariah_score: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    const createRes = await request(app)
+      .post('/api/events')
+      .set('Authorization', `Bearer ${masterToken()}`)
+      .send({
+        location: 'Dubai', event_type: 'goods_delivery',
+        counterparties: ['a', 'b'], linked_contract_id: contractId,
+        asset_reference: 'ref', quantity: 10, unit: 'kg',
+        supporting_documents: [], created_by: 'op',
+      });
+    const eventId = createRes.body.event_id;
+
+    db.insertShariahReview({
+      review_id: reviewId,
+      related_contract_id: contractId,
+      reviewer_id: 'reviewer-001',
+      triggering_reason: 'riba detected',
+      legal_reasoning: '',
+      ruling_type: 'non_compliant',
+      ruling_confidence: 0.9,
+      freeze_settlement: true,
+      block_profit_distribution: true,
+      escalation_status: 'none',
+      digital_signature: '',
+      timestamp: new Date().toISOString(),
+    });
+
+    const res = await request(app)
+      .get(`/api/events/${eventId}`)
+      .set('Authorization', `Bearer ${masterToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.freezeState.settlement_frozen).toBe(true);
+    expect(res.body.freezeState.freeze_reason).toBe(reviewId);
+  });
+});
+
 describe('POST /api/reviews/:id/override', () => {
   function insertReview(db: IcosDb, reviewId: string, contractId: string) {
     db.insertContract({

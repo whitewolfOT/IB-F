@@ -20,6 +20,7 @@ import { uploadsRouter } from './routes/uploads';
 import { standardsRouter } from './routes/standards';
 import { exportsRouter } from './routes/exports';
 import { notificationsRouter } from './routes/notifications';
+import { ledgerRouter } from './routes/ledger';
 import { requireAuth } from '../auth/middleware';
 import { ConfigService, seedConfigIfEmpty } from '../config';
 import { seedStandardsIfEmpty } from '../db/seed_standards';
@@ -82,6 +83,9 @@ export function createApp(db: IcosDb) {
 
   // PDF exports
   app.use('/api/exports', requireAuth, exportsRouter(db));
+
+  // Ledger entries + reconciliation summary
+  app.use('/api/ledger', requireAuth, ledgerRouter(db));
 
   // SSE real-time notifications
   app.use('/api/notifications', requireAuth, notificationsRouter());

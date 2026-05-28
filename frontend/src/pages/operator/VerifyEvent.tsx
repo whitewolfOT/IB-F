@@ -8,6 +8,7 @@ import Textarea from '../../components/ui/Textarea';
 import PipelineStrip from '../../components/PipelineStrip';
 import AuditTimeline from '../../components/AuditTimeline';
 import Spinner from '../../components/ui/Spinner';
+import FreezeAlert from '../../components/FreezeAlert';
 import { ApprovalState } from '../../types/index';
 
 const VerifyEvent: React.FC = () => {
@@ -69,6 +70,14 @@ const VerifyEvent: React.FC = () => {
           )}
         </dl>
       </Card>
+
+      {event.freezeState && (
+        <FreezeAlert
+          settlement_frozen={event.freezeState.settlement_frozen}
+          profit_distribution_blocked={event.freezeState.profit_distribution_blocked}
+          freeze_reason={event.freezeState.freeze_reason}
+        />
+      )}
 
       <Card title="Verification Action">
         <div className="flex flex-col gap-4">

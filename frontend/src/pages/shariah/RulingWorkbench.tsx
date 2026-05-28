@@ -69,6 +69,7 @@ const RulingWorkbench: React.FC = () => {
   const [violations, setViolations] = useState<Record<string, boolean>>({ riba: false, gharar: false, maysir: false });
   const [error, setError] = useState('');
   const [lastSaved, setLastSaved] = useState<string>('');
+  const [standardsSearch, setStandardsSearch] = useState('');
 
   // Pre-populate from draft
   useEffect(() => {
@@ -184,19 +185,36 @@ const RulingWorkbench: React.FC = () => {
           {standards && standards.length > 0 && (
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">AAOIFI Standards</p>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-100 rounded p-2">
-                {standards.map((s) => (
-                  <label key={s.standard_id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-shariah focus:ring-shariah"
-                      checked={selectedStandards.includes(s.standard_id)}
-                      onChange={() => toggleStandard(s.standard_id)}
-                    />
-                    <span className="text-xs text-gray-700">{s.code} – {s.title}</span>
-                  </label>
-                ))}
-              </div>
+              <input
+                type="search"
+                placeholder="Search standards by code or title…"
+                value={standardsSearch}
+                onChange={(e) => setStandardsSearch(e.target.value)}
+                className="w-full mb-2 text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-shariah"
+              />
+              {(() => {
+                const q = standardsSearch.toLowerCase();
+                const filtered = standards.filter(s =>
+                  !q || s.code.toLowerCase().includes(q) || s.title.toLowerCase().includes(q)
+                );
+                return filtered.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic px-2">No standards match "{standardsSearch}"</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-100 rounded p-2">
+                    {filtered.map((s) => (
+                      <label key={s.standard_id} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-shariah focus:ring-shariah"
+                          checked={selectedStandards.includes(s.standard_id)}
+                          onChange={() => toggleStandard(s.standard_id)}
+                        />
+                        <span className="text-xs text-gray-700">{s.code} – {s.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

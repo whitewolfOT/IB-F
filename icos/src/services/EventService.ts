@@ -15,6 +15,11 @@ export interface TransitionRequest {
 export interface EventWithHistory {
   event: Omit<IcosEvent, 'counterparties'> & { counterparties: string[] };
   auditTrail: ApprovalAuditEvent[];
+  freezeState: {
+    settlement_frozen: boolean;
+    profit_distribution_blocked: boolean;
+    freeze_reason: string | null;
+  };
 }
 
 export class EventService {
@@ -52,7 +57,19 @@ export class EventService {
     const event = this.db.getEvent(eventId);
     if (!event) throw new Error(`Event not found: ${eventId}`);
     const auditTrail = this.db.getAuditTrail(eventId);
-    return { event, auditTrail };
+
+    const reviews = this.db.getShariahReviewsForContract(event.linked_contract_id) as Record<string, unknown>[];
+    const sorted = [...reviews].sort((a, b) =>
+      String(b.timestamp ?? '').localeCompare(String(a.timestamp ?? ''))
+    );
+    const freezingReview = sorted.find(r => r.freeze_settlement === 1 || r.freeze_settlement === true);
+    const freezeState = {
+      settlement_frozen: !!freezingReview,
+      profit_distribution_blocked: !!(freezingReview?.block_profit_distribution),
+      freeze_reason: freezingReview ? String(freezingReview.review_id) : null,
+    };
+
+    return { event, auditTrail, freezeState };
   }
 
   list(linkedContractId?: string): Record<string, unknown>[] {

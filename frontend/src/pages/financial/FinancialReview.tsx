@@ -9,6 +9,7 @@ import Input from '../../components/ui/Input';
 import PipelineStrip from '../../components/PipelineStrip';
 import AuditTimeline from '../../components/AuditTimeline';
 import Spinner from '../../components/ui/Spinner';
+import FreezeAlert from '../../components/FreezeAlert';
 import { ApprovalState } from '../../types/index';
 
 const FinancialReview: React.FC = () => {
@@ -64,6 +65,14 @@ const FinancialReview: React.FC = () => {
       <Card title="Pipeline">
         <PipelineStrip currentState={event.state as ApprovalState} />
       </Card>
+
+      {event.freezeState && (
+        <FreezeAlert
+          settlement_frozen={event.freezeState.settlement_frozen}
+          profit_distribution_blocked={event.freezeState.profit_distribution_blocked}
+          freeze_reason={event.freezeState.freeze_reason}
+        />
+      )}
 
       <Card title="Financial Details">
         <dl className="grid grid-cols-2 gap-3 text-sm">
