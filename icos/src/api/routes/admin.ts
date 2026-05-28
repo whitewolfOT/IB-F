@@ -161,5 +161,68 @@ export function adminRouter(db: IcosDb, config: ConfigService): Router {
     }
   });
 
+  // ── Shariah Reviewer Profiles ─────────────────────────────────────────────
+
+  router.get('/reviewers', requireMaster, (_req: Request, res: Response) => {
+    try {
+      res.json(db.listShariahReviewers(false));
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  router.post('/reviewers', requireMaster, (req: Request, res: Response) => {
+    try {
+      const {
+        user_id, full_name, credentials, madhhab, jurisdiction,
+        appointment_period_start, appointment_period_end,
+      } = req.body as Record<string, unknown>;
+
+      if (!user_id || !full_name || !credentials || !madhhab || !jurisdiction ||
+          !appointment_period_start || !appointment_period_end) {
+        res.status(400).json({ error: 'user_id, full_name, credentials, madhhab, jurisdiction, appointment_period_start, and appointment_period_end are required' });
+        return;
+      }
+
+      const user = db.getUserById(String(user_id));
+      if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+      const reviewer = {
+        reviewer_id: uuidv4(),
+        user_id: String(user_id),
+        full_name: String(full_name),
+        credentials: String(credentials),
+        madhhab: String(madhhab) as 'Hanafi' | 'Maliki' | 'Shafii' | 'Hanbali' | 'Jafari' | 'Other',
+        jurisdiction: String(jurisdiction),
+        appointment_period_start: String(appointment_period_start),
+        appointment_period_end: String(appointment_period_end),
+        active: true,
+        created_at: new Date().toISOString(),
+      };
+      db.insertShariahReviewer(reviewer);
+      res.status(201).json({ reviewer_id: reviewer.reviewer_id });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  router.patch('/reviewers/:id', requireMaster, (req: Request, res: Response) => {
+    try {
+      const { appointment_period_end, active, credentials } = req.body as {
+        appointment_period_end?: string; active?: boolean; credentials?: string;
+      };
+      const reviewer = db.getShariahReviewerById(String(req.params.id));
+      if (!reviewer) { res.status(404).json({ error: 'Reviewer not found' }); return; }
+      db.updateShariahReviewer(String(req.params.id), {
+        ...(appointment_period_end !== undefined && { appointment_period_end }),
+        ...(active !== undefined && { active }),
+        ...(credentials !== undefined && { credentials }),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   return router;
 }

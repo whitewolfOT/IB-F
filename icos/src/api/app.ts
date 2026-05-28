@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import { IcosDb } from '../db';
 import { ContractService } from '../services/ContractService';
 import { EventService } from '../services/EventService';
@@ -12,15 +13,20 @@ import { reviewsRouter } from './routes/reviews';
 import { instrumentsRouter } from './routes/instruments';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
+import { exceptionsRouter } from './routes/exceptions';
+import { uploadsRouter } from './routes/uploads';
+import { standardsRouter } from './routes/standards';
 import { requireAuth } from '../auth/middleware';
 import { ConfigService, seedConfigIfEmpty } from '../config';
+import { seedStandardsIfEmpty } from '../db/seed_standards';
 
 export function createApp(db: IcosDb) {
   const app = express();
   app.use(express.json());
 
-  // Seed config defaults on startup
+  // Seed config defaults and standards on startup
   seedConfigIfEmpty(db);
+  seedStandardsIfEmpty(db);
   const configSvc = new ConfigService(db);
 
   const contracts = new ContractService(db);
@@ -42,6 +48,16 @@ export function createApp(db: IcosDb) {
 
   // Admin routes (also require auth + master check per route)
   app.use('/api/admin', requireAuth, adminRouter(db, configSvc));
+
+  // Exception workflow
+  app.use('/api/exceptions', requireAuth, exceptionsRouter(db));
+
+  // File uploads — POST requires auth (enforced inside router); GET is public
+  app.use('/api/uploads', uploadsRouter(db));
+  app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+
+  // AAOIFI standards
+  app.use('/api/standards', requireAuth, standardsRouter(db));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', system: 'ICOS', version: '0.1.0' });

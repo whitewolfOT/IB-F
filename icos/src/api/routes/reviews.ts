@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { ShariahService } from '../../services/ShariahService';
 import { RulingInput, RulingState, EffectiveScope, ShariahOverrideEvent } from '../../shariah';
+import { requireRole } from '../../auth/middleware';
+import { OrgRole } from '../../types';
 
 export function reviewsRouter(shariah: ShariahService): Router {
   const router = Router();
@@ -39,6 +41,45 @@ export function reviewsRouter(shariah: ShariahService): Router {
       res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
     }
   });
+
+  router.patch('/:id/ruling/draft',
+    requireRole(OrgRole.shariah_reviewer, OrgRole.senior_shariah_board),
+    (req: Request, res: Response) => {
+      try {
+        const { draft_reasoning } = req.body as Record<string, unknown>;
+        if (!draft_reasoning) {
+          res.status(400).json({ error: 'draft_reasoning is required' });
+          return;
+        }
+        const row = shariah.getReviewRecord(String(req.params.id));
+        if (!row) {
+          res.status(404).json({ error: `Review not found: ${req.params.id}` });
+          return;
+        }
+        const updatedAt = shariah.saveDraft(String(req.params.id), String(draft_reasoning));
+        res.json({ ok: true, draft_updated_at: updatedAt });
+      } catch (err) {
+        const msg = (err as Error).message;
+        res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+      }
+    });
+
+  router.post('/:id/confirm',
+    requireRole(OrgRole.senior_shariah_board),
+    (req: Request, res: Response) => {
+      try {
+        const row = shariah.getReviewRecord(String(req.params.id));
+        if (!row) {
+          res.status(404).json({ error: `Review not found: ${req.params.id}` });
+          return;
+        }
+        shariah.confirmReview(String(req.params.id));
+        res.json({ ok: true });
+      } catch (err) {
+        const msg = (err as Error).message;
+        res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+      }
+    });
 
   router.post('/:id/override', (req: Request, res: Response) => {
     try {

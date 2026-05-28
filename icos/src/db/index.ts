@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL } from './schema';
+import { SCHEMA_SQL, MIGRATION_SQL } from './schema';
 import { LedgerEntry } from '../ledger';
 import { IcosEvent } from '../events';
 import { ApprovalAuditEvent } from '../approval';
@@ -48,6 +48,64 @@ export interface DbConfigProposal {
   rejection_reason: string | null;
 }
 
+export interface DbException {
+  exception_id: string;
+  exception_type: 'compliance_exception' | 'shariah_override_request' | 'prohibited_industry_dispute';
+  event_id: string;
+  submitter_id: string;
+  grounds: string;
+  scope: 'this_event' | 'this_contract_type' | 'this_counterparty';
+  disputed_criterion: string | null;
+  disputed_match: string | null;
+  supporting_docs: string[];
+  status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbExceptionDecision {
+  decision_id: string;
+  exception_id: string;
+  decided_by: string;
+  decision: 'approved' | 'rejected';
+  notes: string;
+  decided_at: string;
+  step: number;
+  total_steps_required: number;
+}
+
+export interface DbUploadRecord {
+  file_id: string;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string;
+  created_at: string;
+}
+
+export interface DbStandard {
+  standard_id: string;
+  code: string;
+  title: string;
+  summary: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface DbShariahReviewer {
+  reviewer_id: string;
+  user_id: string;
+  full_name: string;
+  credentials: string;
+  madhhab: 'Hanafi' | 'Maliki' | 'Shafii' | 'Hanbali' | 'Jafari' | 'Other';
+  jurisdiction: string;
+  appointment_period_start: string;
+  appointment_period_end: string;
+  active: boolean;
+  created_at: string;
+}
+
 export interface DbParty {
   party_id: string;
   name: string;
@@ -85,6 +143,9 @@ export class IcosDb {
 
   private initialize(): void {
     this.db.exec(SCHEMA_SQL);
+    for (const sql of MIGRATION_SQL) {
+      try { this.db.exec(sql); } catch { /* column already exists — safe to ignore */ }
+    }
   }
 
   close(): void {
@@ -529,5 +590,165 @@ export class IcosDb {
 
   getProposal(proposalId: string): DbConfigProposal | undefined {
     return this.db.prepare('SELECT * FROM config_proposals WHERE proposal_id = ?').get(proposalId) as DbConfigProposal | undefined;
+  }
+
+  // ── Exception Requests ────────────────────────────────────────────────────
+
+  insertException(ex: DbException): void {
+    this.db.prepare(`
+      INSERT INTO exception_requests
+        (exception_id, exception_type, event_id, submitter_id, grounds, scope,
+         disputed_criterion, disputed_match, supporting_docs, status, created_at, updated_at)
+      VALUES
+        (@exception_id, @exception_type, @event_id, @submitter_id, @grounds, @scope,
+         @disputed_criterion, @disputed_match, @supporting_docs, @status, @created_at, @updated_at)
+    `).run({ ...ex, supporting_docs: JSON.stringify(ex.supporting_docs) });
+  }
+
+  getException(exceptionId: string): DbException | undefined {
+    const row = this.db.prepare('SELECT * FROM exception_requests WHERE exception_id = ?').get(exceptionId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, supporting_docs: JSON.parse(String(row.supporting_docs)) } as DbException;
+  }
+
+  listExceptions(filter?: { submitter_id?: string; exception_type?: string }): DbException[] {
+    let sql = 'SELECT * FROM exception_requests WHERE 1=1';
+    const params: unknown[] = [];
+    if (filter?.submitter_id) { sql += ' AND submitter_id = ?'; params.push(filter.submitter_id); }
+    if (filter?.exception_type) { sql += ' AND exception_type = ?'; params.push(filter.exception_type); }
+    sql += ' ORDER BY created_at DESC';
+    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, supporting_docs: JSON.parse(String(row.supporting_docs)) }) as DbException);
+  }
+
+  listExceptionsByEvent(eventId: string): DbException[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM exception_requests WHERE event_id = ? ORDER BY created_at DESC'
+    ).all(eventId) as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, supporting_docs: JSON.parse(String(row.supporting_docs)) }) as DbException);
+  }
+
+  updateExceptionStatus(exceptionId: string, status: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE exception_requests SET status = ?, updated_at = ? WHERE exception_id = ?')
+      .run(status, now, exceptionId);
+  }
+
+  insertExceptionDecision(decision: DbExceptionDecision): void {
+    this.db.prepare(`
+      INSERT INTO exception_decisions
+        (decision_id, exception_id, decided_by, decision, notes, decided_at, step, total_steps_required)
+      VALUES
+        (@decision_id, @exception_id, @decided_by, @decision, @notes, @decided_at, @step, @total_steps_required)
+    `).run(decision);
+  }
+
+  getDecisionsForException(exceptionId: string): DbExceptionDecision[] {
+    return this.db.prepare(
+      'SELECT * FROM exception_decisions WHERE exception_id = ? ORDER BY step ASC'
+    ).all(exceptionId) as DbExceptionDecision[];
+  }
+
+  // ── Upload Records ────────────────────────────────────────────────────────
+
+  insertUploadRecord(record: DbUploadRecord): void {
+    this.db.prepare(`
+      INSERT INTO upload_records (file_id, filename, original_name, mime_type, size_bytes, uploaded_by, created_at)
+      VALUES (@file_id, @filename, @original_name, @mime_type, @size_bytes, @uploaded_by, @created_at)
+    `).run(record);
+  }
+
+  getUploadRecord(fileId: string): DbUploadRecord | undefined {
+    return this.db.prepare('SELECT * FROM upload_records WHERE file_id = ?').get(fileId) as DbUploadRecord | undefined;
+  }
+
+  getUploadRecordByFilename(filename: string): DbUploadRecord | undefined {
+    return this.db.prepare('SELECT * FROM upload_records WHERE filename = ?').get(filename) as DbUploadRecord | undefined;
+  }
+
+  // ── Draft Rulings ─────────────────────────────────────────────────────────
+
+  saveDraftRuling(reviewId: string, draftReasoning: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE shariah_review_records SET draft_reasoning = ?, draft_updated_at = ? WHERE review_id = ?
+    `).run(draftReasoning, now, reviewId);
+  }
+
+  updateShariahReviewEscalation(reviewId: string, escalationStatus: string): void {
+    this.db.prepare('UPDATE shariah_review_records SET escalation_status = ? WHERE review_id = ?')
+      .run(escalationStatus, reviewId);
+  }
+
+  // ── AAOIFI Standards ──────────────────────────────────────────────────────
+
+  insertStandard(standard: DbStandard): void {
+    this.db.prepare(`
+      INSERT INTO aaoifi_standards (standard_id, code, title, summary, active, created_at)
+      VALUES (@standard_id, @code, @title, @summary, @active, @created_at)
+    `).run({ ...standard, active: standard.active ? 1 : 0 });
+  }
+
+  listStandards(activeOnly = true): DbStandard[] {
+    const sql = activeOnly
+      ? 'SELECT * FROM aaoifi_standards WHERE active = 1 ORDER BY code ASC'
+      : 'SELECT * FROM aaoifi_standards ORDER BY code ASC';
+    const rows = this.db.prepare(sql).all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, active: row.active === 1 }) as DbStandard);
+  }
+
+  getStandard(standardId: string): DbStandard | undefined {
+    const row = this.db.prepare('SELECT * FROM aaoifi_standards WHERE standard_id = ?').get(standardId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbStandard;
+  }
+
+  getStandardByCode(code: string): DbStandard | undefined {
+    const row = this.db.prepare('SELECT * FROM aaoifi_standards WHERE code = ?').get(code) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbStandard;
+  }
+
+  // ── Shariah Reviewers ─────────────────────────────────────────────────────
+
+  insertShariahReviewer(reviewer: DbShariahReviewer): void {
+    this.db.prepare(`
+      INSERT INTO shariah_reviewers
+        (reviewer_id, user_id, full_name, credentials, madhhab, jurisdiction,
+         appointment_period_start, appointment_period_end, active, created_at)
+      VALUES
+        (@reviewer_id, @user_id, @full_name, @credentials, @madhhab, @jurisdiction,
+         @appointment_period_start, @appointment_period_end, @active, @created_at)
+    `).run({ ...reviewer, active: reviewer.active ? 1 : 0 });
+  }
+
+  getShariahReviewerByUserId(userId: string): DbShariahReviewer | undefined {
+    const row = this.db.prepare('SELECT * FROM shariah_reviewers WHERE user_id = ?').get(userId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbShariahReviewer;
+  }
+
+  getShariahReviewerById(reviewerId: string): DbShariahReviewer | undefined {
+    const row = this.db.prepare('SELECT * FROM shariah_reviewers WHERE reviewer_id = ?').get(reviewerId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbShariahReviewer;
+  }
+
+  listShariahReviewers(activeOnly = false): DbShariahReviewer[] {
+    const sql = activeOnly
+      ? 'SELECT * FROM shariah_reviewers WHERE active = 1 ORDER BY full_name ASC'
+      : 'SELECT * FROM shariah_reviewers ORDER BY full_name ASC';
+    const rows = this.db.prepare(sql).all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, active: row.active === 1 }) as DbShariahReviewer);
+  }
+
+  updateShariahReviewer(reviewerId: string, updates: Partial<Pick<DbShariahReviewer, 'appointment_period_end' | 'active' | 'credentials'>>): void {
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { reviewer_id: reviewerId };
+    if (updates.appointment_period_end !== undefined) { fields.push('appointment_period_end = @appointment_period_end'); params.appointment_period_end = updates.appointment_period_end; }
+    if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+    if (updates.credentials !== undefined) { fields.push('credentials = @credentials'); params.credentials = updates.credentials; }
+    if (fields.length === 0) return;
+    this.db.prepare(`UPDATE shariah_reviewers SET ${fields.join(', ')} WHERE reviewer_id = @reviewer_id`).run(params);
   }
 }

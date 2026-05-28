@@ -196,4 +196,76 @@ CREATE TABLE IF NOT EXISTS config_proposals (
   decided_at     TEXT,
   rejection_reason TEXT
 );
+
+CREATE TABLE IF NOT EXISTS exception_requests (
+  exception_id       TEXT PRIMARY KEY,
+  exception_type     TEXT NOT NULL CHECK (exception_type IN (
+    'compliance_exception', 'shariah_override_request', 'prohibited_industry_dispute'
+  )),
+  event_id           TEXT NOT NULL REFERENCES events(event_id),
+  submitter_id       TEXT NOT NULL REFERENCES users(user_id),
+  grounds            TEXT NOT NULL,
+  scope              TEXT NOT NULL CHECK (scope IN (
+    'this_event', 'this_contract_type', 'this_counterparty'
+  )),
+  disputed_criterion TEXT,
+  disputed_match     TEXT,
+  supporting_docs    TEXT NOT NULL DEFAULT '[]',
+  status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+    'pending', 'under_review', 'approved', 'rejected', 'withdrawn'
+  )),
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS exception_decisions (
+  decision_id            TEXT PRIMARY KEY,
+  exception_id           TEXT NOT NULL REFERENCES exception_requests(exception_id),
+  decided_by             TEXT NOT NULL REFERENCES users(user_id),
+  decision               TEXT NOT NULL CHECK (decision IN ('approved', 'rejected')),
+  notes                  TEXT NOT NULL,
+  decided_at             TEXT NOT NULL,
+  step                   INTEGER NOT NULL DEFAULT 1,
+  total_steps_required   INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS upload_records (
+  file_id       TEXT PRIMARY KEY,
+  filename      TEXT NOT NULL UNIQUE,
+  original_name TEXT NOT NULL,
+  mime_type     TEXT NOT NULL,
+  size_bytes    INTEGER NOT NULL,
+  uploaded_by   TEXT NOT NULL REFERENCES users(user_id),
+  created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS aaoifi_standards (
+  standard_id   TEXT PRIMARY KEY,
+  code          TEXT NOT NULL UNIQUE,
+  title         TEXT NOT NULL,
+  summary       TEXT NOT NULL,
+  active        INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS shariah_reviewers (
+  reviewer_id              TEXT PRIMARY KEY,
+  user_id                  TEXT NOT NULL REFERENCES users(user_id),
+  full_name                TEXT NOT NULL,
+  credentials              TEXT NOT NULL,
+  madhhab                  TEXT NOT NULL CHECK (madhhab IN (
+    'Hanafi','Maliki','Shafii','Hanbali','Jafari','Other'
+  )),
+  jurisdiction             TEXT NOT NULL,
+  appointment_period_start TEXT NOT NULL,
+  appointment_period_end   TEXT NOT NULL,
+  active                   INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at               TEXT NOT NULL
+);
 `;
+
+// Applied with try-catch on every startup (SQLite errors if column already exists).
+export const MIGRATION_SQL = [
+  'ALTER TABLE shariah_review_records ADD COLUMN draft_reasoning TEXT',
+  'ALTER TABLE shariah_review_records ADD COLUMN draft_updated_at TEXT',
+];
