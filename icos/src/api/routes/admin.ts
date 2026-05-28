@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb } from '../../db';
+import { IIcosDb } from '../../db/interface';
 import { ConfigService } from '../../config';
 import { hashPassword } from '../../auth';
 import { requireMaster } from '../../auth/middleware';
@@ -23,7 +23,7 @@ function getAllowedRolesForKey(configKey: string): OrgRole[] {
   return [];
 }
 
-export function adminRouter(db: IcosDb, config: ConfigService): Router {
+export function adminRouter(db: IIcosDb, config: ConfigService): Router {
   const router = Router();
 
   // All admin routes require master (applied here + in app.ts)
@@ -219,6 +219,32 @@ export function adminRouter(db: IcosDb, config: ConfigService): Router {
         ...(credentials !== undefined && { credentials }),
       });
       res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // ── Access Log ────────────────────────────────────────────────────────────
+
+  router.get('/access-log', requireMaster, (req: Request, res: Response) => {
+    try {
+      const { resource_id, user_id, since, limit } = req.query as {
+        resource_id?: string;
+        user_id?: string;
+        since?: string;
+        limit?: string;
+      };
+      const maxLimit = Math.min(parseInt(limit ?? '100', 10) || 100, 1000);
+      let rows;
+      if (user_id) {
+        rows = db.getAccessLogByUser(user_id, since).slice(0, maxLimit);
+      } else if (resource_id) {
+        rows = db.getAccessLog(resource_id).slice(0, maxLimit);
+      } else {
+        // Return recent entries across all resources
+        rows = db.listAccessLog(since, maxLimit);
+      }
+      res.json(rows);
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

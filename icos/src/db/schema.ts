@@ -262,6 +262,26 @@ CREATE TABLE IF NOT EXISTS shariah_reviewers (
   active                   INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
   created_at               TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS migrations (
+  migration_id  TEXT PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  ran_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS access_log (
+  log_id        TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL REFERENCES users(user_id),
+  action        TEXT NOT NULL CHECK (action IN (
+    'read_ruling', 'read_legal_reasoning', 'read_audit_trail',
+    'read_override', 'read_compliance_flag', 'export_pdf'
+  )),
+  resource_type TEXT NOT NULL,
+  resource_id   TEXT NOT NULL,
+  ip_address    TEXT,
+  user_agent    TEXT,
+  accessed_at   TEXT NOT NULL
+);
 `;
 
 // Applied with try-catch on every startup (SQLite errors if column already exists).

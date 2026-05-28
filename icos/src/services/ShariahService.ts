@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb } from '../db';
+import { IIcosDb, DbAccessLog } from '../db/interface';
+import { encrypt, decrypt, isEncrypted } from '../crypto';
 import {
   ShariahReviewRecord,
   RulingInput,
@@ -10,10 +11,30 @@ import {
 } from '../shariah';
 
 export class ShariahService {
-  constructor(private readonly db: IcosDb) {}
+  constructor(private readonly db: IIcosDb) {}
 
-  getReviewRecord(reviewId: string): Record<string, unknown> | undefined {
-    return this.db.getShariahReview(reviewId);
+  getReviewRecord(reviewId: string, requestingUserId?: string, ip?: string, userAgent?: string): Record<string, unknown> | undefined {
+    const row = this.db.getShariahReview(reviewId);
+    if (!row) return undefined;
+    const legalReasoning = row.legal_reasoning ? String(row.legal_reasoning) : '';
+    const decryptedReasoning = legalReasoning && isEncrypted(legalReasoning)
+      ? decrypt(legalReasoning)
+      : legalReasoning;
+    // Audit log if a user is reading and there is a legal_reasoning
+    if (requestingUserId && decryptedReasoning) {
+      const entry: DbAccessLog = {
+        log_id: uuidv4(),
+        user_id: requestingUserId,
+        action: 'read_legal_reasoning',
+        resource_type: 'shariah_review',
+        resource_id: reviewId,
+        ip_address: ip ?? null,
+        user_agent: userAgent ?? null,
+        accessed_at: new Date().toISOString(),
+      };
+      this.db.insertAccessLog(entry);
+    }
+    return { ...row, legal_reasoning: decryptedReasoning };
   }
 
   saveDraft(reviewId: string, draftReasoning: string): string {
@@ -79,9 +100,10 @@ export class ShariahService {
 
     const complianceFlag = updateShariahRuling(record, input);
 
+    const encryptedReasoning = encrypt(input.legal_reasoning);
     this.db.updateShariahReviewRuling(reviewId, {
       ruling_type: input.ruling_type,
-      legal_reasoning: input.legal_reasoning,
+      legal_reasoning: encryptedReasoning,
       ruling_confidence: input.ruling_confidence,
       freeze_settlement: record.freeze_settlement,
       block_profit_distribution: record.block_profit_distribution,

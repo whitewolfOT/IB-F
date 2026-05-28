@@ -4,6 +4,7 @@ import { LedgerEntry } from '../ledger';
 import { IcosEvent } from '../events';
 import { ApprovalAuditEvent } from '../approval';
 import { ComplianceFlag } from '../shariah';
+import { IIcosDb } from './interface';
 
 export interface DbUser {
   user_id: string;
@@ -84,6 +85,17 @@ export interface DbUploadRecord {
   created_at: string;
 }
 
+export interface DbAccessLog {
+  log_id: string;
+  user_id: string;
+  action: 'read_ruling' | 'read_legal_reasoning' | 'read_audit_trail' | 'read_override' | 'read_compliance_flag' | 'export_pdf';
+  resource_type: string;
+  resource_id: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  accessed_at: string;
+}
+
 export interface DbStandard {
   standard_id: string;
   code: string;
@@ -131,7 +143,7 @@ export interface DbContract {
   updated_at: string;
 }
 
-export class IcosDb {
+export class IcosDb implements IIcosDb {
   private db: Database.Database;
 
   constructor(dbPath: string = ':memory:') {
@@ -666,6 +678,48 @@ export class IcosDb {
     return this.db.prepare('SELECT * FROM upload_records WHERE filename = ?').get(filename) as DbUploadRecord | undefined;
   }
 
+  deleteUploadRecord(fileId: string): void {
+    this.db.prepare('DELETE FROM upload_records WHERE file_id = ?').run(fileId);
+  }
+
+  // ── Access Log ────────────────────────────────────────────────────────────
+
+  insertAccessLog(entry: DbAccessLog): void {
+    this.db.prepare(`
+      INSERT INTO access_log (log_id, user_id, action, resource_type, resource_id, ip_address, user_agent, accessed_at)
+      VALUES (@log_id, @user_id, @action, @resource_type, @resource_id, @ip_address, @user_agent, @accessed_at)
+    `).run(entry);
+  }
+
+  getAccessLog(resourceId: string): DbAccessLog[] {
+    return this.db.prepare(
+      'SELECT * FROM access_log WHERE resource_id = ? ORDER BY accessed_at DESC'
+    ).all(resourceId) as DbAccessLog[];
+  }
+
+  getAccessLogByUser(userId: string, since?: string): DbAccessLog[] {
+    if (since) {
+      return this.db.prepare(
+        'SELECT * FROM access_log WHERE user_id = ? AND accessed_at >= ? ORDER BY accessed_at DESC'
+      ).all(userId, since) as DbAccessLog[];
+    }
+    return this.db.prepare(
+      'SELECT * FROM access_log WHERE user_id = ? ORDER BY accessed_at DESC'
+    ).all(userId) as DbAccessLog[];
+  }
+
+  listAccessLog(since?: string, limit?: number): DbAccessLog[] {
+    const maxRows = limit ?? 100;
+    if (since) {
+      return this.db.prepare(
+        'SELECT * FROM access_log WHERE accessed_at >= ? ORDER BY accessed_at DESC LIMIT ?'
+      ).all(since, maxRows) as DbAccessLog[];
+    }
+    return this.db.prepare(
+      'SELECT * FROM access_log ORDER BY accessed_at DESC LIMIT ?'
+    ).all(maxRows) as DbAccessLog[];
+  }
+
   // ── Draft Rulings ─────────────────────────────────────────────────────────
 
   saveDraftRuling(reviewId: string, draftReasoning: string): void {
@@ -750,5 +804,11 @@ export class IcosDb {
     if (updates.credentials !== undefined) { fields.push('credentials = @credentials'); params.credentials = updates.credentials; }
     if (fields.length === 0) return;
     this.db.prepare(`UPDATE shariah_reviewers SET ${fields.join(', ')} WHERE reviewer_id = @reviewer_id`).run(params);
+  }
+
+  // ── Shariah Reviews (list all) ─────────────────────────────────────────────
+
+  listShariahReviews(): unknown[] {
+    return this.db.prepare('SELECT * FROM shariah_review_records ORDER BY timestamp DESC').all();
   }
 }

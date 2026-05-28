@@ -9,17 +9,30 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  // Try Authorization header first
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing or invalid Authorization header' });
-    return;
+  if (header?.startsWith('Bearer ')) {
+    try {
+      req.user = verifyToken(header.slice(7));
+      return next();
+    } catch {
+      res.status(401).json({ error: 'Invalid or expired token' });
+      return;
+    }
   }
-  try {
-    req.user = verifyToken(header.slice(7));
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+  // Fall back to httpOnly cookie
+  const token = (req as any).cookies?.icos_token;
+  if (token) {
+    try {
+      req.user = verifyToken(token);
+      return next();
+    } catch {
+      res.clearCookie('icos_token');
+      res.status(401).json({ error: 'Invalid or expired session' });
+      return;
+    }
   }
+  res.status(401).json({ error: 'Authentication required' });
 }
 
 export function requireRole(...roles: OrgRole[]) {

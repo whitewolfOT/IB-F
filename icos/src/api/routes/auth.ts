@@ -50,6 +50,14 @@ export function authRouter(db: IcosDb): Router {
         expires_at: expiresAt.toISOString(),
         revoked: false,
       });
+      res.cookie('icos_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 8 * 60 * 60 * 1000,
+        path: '/',
+      });
+      // still return token in body for API clients
       res.json({
         token,
         user: { user_id: user.user_id, email: user.email, role: user.role, is_master: user.is_master },
@@ -61,10 +69,21 @@ export function authRouter(db: IcosDb): Router {
 
   router.post('/logout', requireAuth, (req: Request, res: Response) => {
     try {
-      const header = req.headers.authorization!;
-      const token = header.slice(7);
-      const tokenHash = createHash('sha256').update(token).digest('hex');
-      db.revokeSessionByTokenHash(tokenHash);
+      // Revoke token from header or cookie
+      const header = req.headers.authorization;
+      const rawToken = header?.startsWith('Bearer ')
+        ? header.slice(7)
+        : (req as any).cookies?.icos_token;
+      if (rawToken) {
+        const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+        db.revokeSessionByTokenHash(tokenHash);
+      }
+      res.clearCookie('icos_token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+      });
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });

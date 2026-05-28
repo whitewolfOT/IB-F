@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import cookieParser from 'cookie-parser';
+import cors from 'cors';
 import { IcosDb } from '../db';
 import { ContractService } from '../services/ContractService';
 import { EventService } from '../services/EventService';
@@ -16,13 +18,32 @@ import { adminRouter } from './routes/admin';
 import { exceptionsRouter } from './routes/exceptions';
 import { uploadsRouter } from './routes/uploads';
 import { standardsRouter } from './routes/standards';
+import { exportsRouter } from './routes/exports';
+import { notificationsRouter } from './routes/notifications';
 import { requireAuth } from '../auth/middleware';
 import { ConfigService, seedConfigIfEmpty } from '../config';
 import { seedStandardsIfEmpty } from '../db/seed_standards';
+import { authLimiter, apiLimiter, uploadLimiter } from './middleware/rateLimit';
 
 export function createApp(db: IcosDb) {
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
+  const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173').split(',');
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
+      else callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+
+  // Rate limiters
+  app.use('/api/auth', authLimiter);
+  app.use('/api', apiLimiter);
+  app.use('/api/uploads', uploadLimiter);
 
   // Seed config defaults and standards on startup
   seedConfigIfEmpty(db);
@@ -58,6 +79,12 @@ export function createApp(db: IcosDb) {
 
   // AAOIFI standards
   app.use('/api/standards', requireAuth, standardsRouter(db));
+
+  // PDF exports
+  app.use('/api/exports', requireAuth, exportsRouter(db));
+
+  // SSE real-time notifications
+  app.use('/api/notifications', requireAuth, notificationsRouter());
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', system: 'ICOS', version: '0.1.0' });

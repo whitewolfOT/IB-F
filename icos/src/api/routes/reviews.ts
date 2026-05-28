@@ -51,7 +51,7 @@ export function reviewsRouter(shariah: ShariahService): Router {
           res.status(400).json({ error: 'draft_reasoning is required' });
           return;
         }
-        const row = shariah.getReviewRecord(String(req.params.id));
+        const row = shariah.getReviewRecord(String(req.params.id), req.user!.user_id, req.ip, String(req.headers['user-agent'] ?? ''));
         if (!row) {
           res.status(404).json({ error: `Review not found: ${req.params.id}` });
           return;
@@ -68,7 +68,7 @@ export function reviewsRouter(shariah: ShariahService): Router {
     requireRole(OrgRole.senior_shariah_board),
     (req: Request, res: Response) => {
       try {
-        const row = shariah.getReviewRecord(String(req.params.id));
+        const row = shariah.getReviewRecord(String(req.params.id), req.user!.user_id, req.ip, String(req.headers['user-agent'] ?? ''));
         if (!row) {
           res.status(404).json({ error: `Review not found: ${req.params.id}` });
           return;
