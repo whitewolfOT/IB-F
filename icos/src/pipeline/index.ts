@@ -24,7 +24,7 @@ import {
 import { murabahaProfit, leaseRevenue, riskReserveRequirement } from '../formulas';
 import { createShariahReviewStub, ShariahReviewRecord } from '../shariah';
 import { detectFromContract } from '../validation';
-import { scoreCompliance, ComplianceScore } from '../compliance';
+import { scoreCompliance, scoreComplianceWithWeights, ComplianceScore } from '../compliance';
 
 export type AnyContract =
   | SaleContract
@@ -40,6 +40,11 @@ export class PipelineError extends Error {
     super(message);
     this.name = 'PipelineError';
   }
+}
+
+export interface PipelineConfig {
+  scoreGate?: number;
+  weights?: { noRiba: number; noGharar: number; assetBacked: number; ownershipValid: number; properRiskSharing: number };
 }
 
 export interface PipelineResult {
@@ -71,6 +76,7 @@ export function runPipeline(
   event: IcosEvent,
   contract: AnyContract,
   descriptor: TransactionDescriptor,
+  config?: PipelineConfig,
 ): PipelineResult {
   if (event.approval_state !== ApprovalState.approved) {
     throw new PipelineError(`Event must be in 'approved' state, got '${event.approval_state}'`);
@@ -86,7 +92,7 @@ export function runPipeline(
   const { ribaViolations, ghararViolations, maysirViolations } = detectFromContract(
     contract as Parameters<typeof detectFromContract>[0],
   );
-  const complianceScore = scoreCompliance({
+  const complianceInput = {
     noRiba: ribaViolations.length === 0,
     noGharar: ghararViolations.length === 0,
     assetBacked: Boolean(event.asset_reference),
@@ -96,8 +102,12 @@ export function runPipeline(
     properRiskSharing:
       !['mudaraba', 'musharaka'].includes(classification.contract_type) ||
       !(contract as PartnershipContract).guaranteed_return,
-  });
-  if (complianceScore.score < 40) {
+  };
+  const complianceScore = config?.weights
+    ? scoreComplianceWithWeights(complianceInput, config.weights)
+    : scoreCompliance(complianceInput);
+  const scoreGate = config?.scoreGate ?? 40;
+  if (complianceScore.score < scoreGate) {
     throw new PipelineError(
       `Compliance score ${complianceScore.score} is Non-Compliant: ${complianceScore.band}. ` +
       `Riba: [${ribaViolations.join('; ')}]; ` +

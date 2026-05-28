@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { ContractService } from '../../services/ContractService';
+import { verifyLedgerEntryHash } from '../../ledger';
 
 export function contractsRouter(contracts: ContractService): Router {
   const router = Router();
@@ -50,6 +51,19 @@ export function contractsRouter(contracts: ContractService): Router {
       }
       contracts.updateStatus(String(req.params.id), status, shariah_score);
       res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  router.get('/:id/ledger', (req: Request, res: Response) => {
+    try {
+      const entries = contracts.getLedgerEntries(String(req.params.id));
+      const result = entries.map(entry => ({
+        ...entry,
+        integrity_verified: verifyLedgerEntryHash(entry),
+      }));
+      res.json(result);
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

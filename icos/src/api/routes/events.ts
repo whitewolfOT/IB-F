@@ -73,25 +73,20 @@ export function eventsRouter(
 
   router.post('/:id/transition', (req: Request, res: Response) => {
     try {
-      const { newState, reviewer, role, reason, supportingDocuments, conditions } = req.body as {
-        newState?: string;
-        reviewer?: string;
-        role?: string;
-        reason?: string;
-        supportingDocuments?: string[];
-        conditions?: string[];
-      };
-      if (!newState || !reviewer || !role || !reason) {
-        res.status(400).json({ error: 'newState, reviewer, role, and reason are required' });
+      const { newState, reason, supportingDocuments, conditions } = req.body as Record<string, unknown>;
+      const role = req.user!.role;
+      const reviewer = req.user!.user_id;
+      if (!newState || !reason) {
+        res.status(400).json({ error: 'newState and reason are required' });
         return;
       }
       const audit = events.transition(String(req.params.id), {
         newState: newState as ApprovalState,
         reviewer,
         role: role as OrgRole,
-        reason,
-        supportingDocuments,
-        conditions,
+        reason: reason as string,
+        supportingDocuments: supportingDocuments as string[] | undefined,
+        conditions: conditions as string[] | undefined,
       });
       res.json(audit);
     } catch (err) {

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb } from '../../db';
+import { IIcosDb } from '../../db/interface';
 import { SupportingInstrument } from '../../contracts/schemas';
 import {
   validateWaad,
@@ -22,7 +22,7 @@ function validateByType(instrument: SupportingInstrument) {
   }
 }
 
-export function instrumentsRouter(db: IcosDb): Router {
+export function instrumentsRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.post('/', (req: Request, res: Response) => {

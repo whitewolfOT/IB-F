@@ -5,9 +5,15 @@ export enum MadhhabSpecialization {
   Maliki = 'Maliki',
   Shafii = 'Shafii',
   Hanbali = 'Hanbali',
-  Jafari = 'Jafari',
-  Other = 'Other',
 }
+
+export const MADHHAB_CONTRACT_ALIGNMENT: Record<string, string[]> = {
+  Hanafi:  ['murabaha','salam','istisna','musharaka','mudaraba','ijarah','ijarah_muntahia_bittamleek','qard','wakala','wakala_bi_al_istithmar','deferred_payment_sale'],
+  Maliki:  ['murabaha','salam','istisna','musharaka','mudaraba','ijarah','ijarah_muntahia_bittamleek','qard','wakala','deferred_payment_sale'],
+  Shafii:  ['murabaha','salam','istisna','musharaka','mudaraba','ijarah','ijarah_muntahia_bittamleek','qard','wakala','deferred_payment_sale'],
+  Hanbali: ['murabaha','salam','istisna','musharaka','mudaraba','ijarah','ijarah_muntahia_bittamleek','qard','wakala','deferred_payment_sale'],
+};
+// Every reviewer maps to an entry — routing is always deterministic.
 
 export type ReviewerType = 'internal_shariah_reviewer' | 'external_shariah_advisor' | 'shariah_board_member' | 'senior_faqih' | 'institutional_shariah_committee';
 

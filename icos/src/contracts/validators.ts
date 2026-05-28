@@ -15,10 +15,14 @@ const PROHIBITED_INDUSTRIES = [
   'riba', 'maysir', 'gharar',
 ];
 
-export function validateProhibitedIndustry(description: string): ValidationResult {
+export function validateProhibitedIndustry(
+  description: string,
+  industries?: string[]
+): ValidationResult {
+  const list = industries ?? PROHIBITED_INDUSTRIES;
   const lower = description.toLowerCase();
   const violations: string[] = [];
-  for (const industry of PROHIBITED_INDUSTRIES) {
+  for (const industry of list) {
     if (lower.includes(industry)) {
       violations.push(`Prohibited industry detected: ${industry}`);
     }

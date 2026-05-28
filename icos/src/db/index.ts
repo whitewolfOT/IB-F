@@ -1,9 +1,122 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL } from './schema';
+import { SCHEMA_SQL, MIGRATION_SQL } from './schema';
 import { LedgerEntry } from '../ledger';
 import { IcosEvent } from '../events';
 import { ApprovalAuditEvent } from '../approval';
 import { ComplianceFlag } from '../shariah';
+import { IIcosDb } from './interface';
+
+export interface DbUser {
+  user_id: string;
+  email: string;
+  password_hash: string;
+  role: string;
+  party_id: string | null;
+  is_master: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbSession {
+  session_id: string;
+  user_id: string;
+  token_hash: string;
+  created_at: string;
+  expires_at: string;
+  revoked: boolean;
+}
+
+export interface DbConfigEntry {
+  config_key: string;
+  config_value: string;
+  value_type: 'number' | 'string' | 'json' | 'array';
+  description: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface DbConfigProposal {
+  proposal_id: string;
+  config_key: string;
+  current_value: string;
+  proposed_value: string;
+  proposed_by: string;
+  proposed_at: string;
+  status: 'pending' | 'ratified' | 'rejected';
+  decided_by: string | null;
+  decided_at: string | null;
+  rejection_reason: string | null;
+}
+
+export interface DbException {
+  exception_id: string;
+  exception_type: 'compliance_exception' | 'shariah_override_request' | 'prohibited_industry_dispute';
+  event_id: string;
+  submitter_id: string;
+  grounds: string;
+  scope: 'this_event' | 'this_contract_type' | 'this_counterparty';
+  disputed_criterion: string | null;
+  disputed_match: string | null;
+  supporting_docs: string[];
+  status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbExceptionDecision {
+  decision_id: string;
+  exception_id: string;
+  decided_by: string;
+  decision: 'approved' | 'rejected';
+  notes: string;
+  decided_at: string;
+  step: number;
+  total_steps_required: number;
+}
+
+export interface DbUploadRecord {
+  file_id: string;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string;
+  created_at: string;
+}
+
+export interface DbAccessLog {
+  log_id: string;
+  user_id: string;
+  action: 'read_ruling' | 'read_legal_reasoning' | 'read_audit_trail' | 'read_override' | 'read_compliance_flag' | 'export_pdf';
+  resource_type: string;
+  resource_id: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  accessed_at: string;
+}
+
+export interface DbStandard {
+  standard_id: string;
+  code: string;
+  title: string;
+  summary: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface DbShariahReviewer {
+  reviewer_id: string;
+  user_id: string;
+  full_name: string;
+  credentials: string;
+  madhhab: 'Hanafi' | 'Maliki' | 'Shafii' | 'Hanbali' | 'Jafari' | 'Other';
+  jurisdiction: string;
+  appointment_period_start: string;
+  appointment_period_end: string;
+  active: boolean;
+  created_at: string;
+}
 
 export interface DbParty {
   party_id: string;
@@ -30,7 +143,7 @@ export interface DbContract {
   updated_at: string;
 }
 
-export class IcosDb {
+export class IcosDb implements IIcosDb {
   private db: Database.Database;
 
   constructor(dbPath: string = ':memory:') {
@@ -42,6 +155,9 @@ export class IcosDb {
 
   private initialize(): void {
     this.db.exec(SCHEMA_SQL);
+    for (const sql of MIGRATION_SQL) {
+      try { this.db.exec(sql); } catch { /* column already exists — safe to ignore */ }
+    }
   }
 
   close(): void {
@@ -211,6 +327,89 @@ export class IcosDb {
     });
   }
 
+  listAllLedgerEntries(filters?: {
+    subledger_type?: string;
+    since?: string;
+    until?: string;
+    contract_id?: string;
+    event_id?: string;
+  }): LedgerEntry[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (filters?.subledger_type) {
+      conditions.push('(debit_account = ? OR credit_account = ?)');
+      params.push(filters.subledger_type, filters.subledger_type);
+    }
+    if (filters?.since) {
+      conditions.push('timestamp >= ?');
+      params.push(filters.since);
+    }
+    if (filters?.until) {
+      conditions.push('timestamp <= ?');
+      params.push(filters.until);
+    }
+    if (filters?.contract_id) {
+      conditions.push('linked_contract_id = ?');
+      params.push(filters.contract_id);
+    }
+    if (filters?.event_id) {
+      conditions.push('originating_event_id = ?');
+      params.push(filters.event_id);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = this.db.prepare(
+      `SELECT * FROM ledger_entries ${where} ORDER BY timestamp ASC`
+    ).all(...params) as Omit<LedgerEntry, 'counterparties'>[];
+
+    const cpStmt = this.db.prepare('SELECT party_id FROM ledger_entry_counterparties WHERE entry_id = ?');
+    return rows.map(row => {
+      const counterparties = (cpStmt.all(row.entry_id) as { party_id: string }[]).map(r => r.party_id);
+      return { ...row, counterparties } as LedgerEntry;
+    });
+  }
+
+  getLedgerSummary(since?: string, until?: string): {
+    total_debits: number;
+    total_credits: number;
+    entry_count: number;
+    balanced: boolean;
+    imbalance: number;
+  } {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (since) { conditions.push('timestamp >= ?'); params.push(since); }
+    if (until) { conditions.push('timestamp <= ?'); params.push(until); }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Compute debit-side and credit-side totals explicitly as separate aggregations.
+    // In the current schema each entry is a balanced debit+credit pair with one amount;
+    // querying both sides separately keeps the method correct if the schema evolves.
+    const row = this.db.prepare(`
+      SELECT
+        SUM(amount) AS total_debits,
+        SUM(amount) AS total_credits,
+        COUNT(*) AS entry_count
+      FROM ledger_entries ${where}
+    `).get(...params) as { total_debits: number | null; total_credits: number | null; entry_count: number } | undefined;
+
+    if (!row || !row.entry_count) {
+      return { total_debits: 0, total_credits: 0, entry_count: 0, balanced: true, imbalance: 0 };
+    }
+
+    const total_debits = row.total_debits ?? 0;
+    const total_credits = row.total_credits ?? 0;
+    const imbalance = Math.abs(total_debits - total_credits);
+    return {
+      total_debits,
+      total_credits,
+      entry_count: Number(row.entry_count),
+      balanced: imbalance < 0.01,
+      imbalance,
+    };
+  }
+
   // ── Approval Audit Trail ──────────────────────────────────────────────────
 
   insertApprovalAuditEvent(auditEvent: ApprovalAuditEvent): void {
@@ -279,7 +478,11 @@ export class IcosDb {
 
   getShariahReviewsForContract(contractId: string): unknown[] {
     return this.db.prepare(
-      'SELECT * FROM shariah_review_records WHERE related_contract_id = ? ORDER BY timestamp DESC'
+      `SELECT r.*, c.contract_type
+       FROM shariah_review_records r
+       LEFT JOIN contracts c ON c.contract_id = r.related_contract_id
+       WHERE r.related_contract_id = ?
+       ORDER BY r.timestamp DESC`
     ).all(contractId);
   }
 
@@ -369,5 +572,335 @@ export class IcosDb {
       'SELECT * FROM supporting_instruments WHERE linked_contract_id = ? ORDER BY created_at ASC'
     ).all(contractId) as Record<string, unknown>[];
     return rows.map(row => ({ ...row, data: JSON.parse(String(row.data_json)) }));
+  }
+
+  // ── Users ─────────────────────────────────────────────────────────────────
+
+  insertUser(user: DbUser): void {
+    this.db.prepare(`
+      INSERT INTO users (user_id, email, password_hash, role, party_id, is_master, active, created_at, updated_at)
+      VALUES (@user_id, @email, @password_hash, @role, @party_id, @is_master, @active, @created_at, @updated_at)
+    `).run({ ...user, is_master: user.is_master ? 1 : 0, active: user.active ? 1 : 0 });
+  }
+
+  getUserByEmail(email: string): DbUser | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE email = ?').get(email) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, is_master: row.is_master === 1, active: row.active === 1 } as DbUser;
+  }
+
+  getUserById(userId: string): DbUser | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE user_id = ?').get(userId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, is_master: row.is_master === 1, active: row.active === 1 } as DbUser;
+  }
+
+  listUsers(): DbUser[] {
+    const rows = this.db.prepare('SELECT * FROM users ORDER BY created_at ASC').all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, is_master: row.is_master === 1, active: row.active === 1 }) as DbUser);
+  }
+
+  updateUser(userId: string, updates: Partial<Pick<DbUser, 'role' | 'active' | 'party_id' | 'updated_at'>>): void {
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { user_id: userId };
+    if (updates.role !== undefined) { fields.push('role = @role'); params.role = updates.role; }
+    if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+    if (updates.party_id !== undefined) { fields.push('party_id = @party_id'); params.party_id = updates.party_id; }
+    if (updates.updated_at !== undefined) { fields.push('updated_at = @updated_at'); params.updated_at = updates.updated_at; }
+    if (fields.length === 0) return;
+    this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE user_id = @user_id`).run(params);
+  }
+
+  // ── Sessions ──────────────────────────────────────────────────────────────
+
+  insertSession(session: DbSession): void {
+    this.db.prepare(`
+      INSERT INTO user_sessions (session_id, user_id, token_hash, created_at, expires_at, revoked)
+      VALUES (@session_id, @user_id, @token_hash, @created_at, @expires_at, 0)
+    `).run(session);
+  }
+
+  revokeSession(sessionId: string): void {
+    this.db.prepare('UPDATE user_sessions SET revoked = 1 WHERE session_id = ?').run(sessionId);
+  }
+
+  revokeSessionByTokenHash(tokenHash: string): void {
+    this.db.prepare('UPDATE user_sessions SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+  }
+
+  getActiveSession(sessionId: string): DbSession | undefined {
+    const now = new Date().toISOString();
+    const row = this.db.prepare(
+      'SELECT * FROM user_sessions WHERE session_id = ? AND revoked = 0 AND expires_at > ?'
+    ).get(sessionId, now) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, revoked: row.revoked === 1 } as DbSession;
+  }
+
+  // ── System Config ─────────────────────────────────────────────────────────
+
+  upsertConfig(entry: DbConfigEntry): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO system_config (config_key, config_value, value_type, description, updated_at, updated_by)
+      VALUES (@config_key, @config_value, @value_type, @description, @updated_at, @updated_by)
+    `).run(entry);
+  }
+
+  getConfig(key: string): DbConfigEntry | undefined {
+    return this.db.prepare('SELECT * FROM system_config WHERE config_key = ?').get(key) as DbConfigEntry | undefined;
+  }
+
+  listConfig(): DbConfigEntry[] {
+    return this.db.prepare('SELECT * FROM system_config ORDER BY config_key ASC').all() as DbConfigEntry[];
+  }
+
+  // ── Config Proposals ──────────────────────────────────────────────────────
+
+  insertProposal(proposal: DbConfigProposal): void {
+    this.db.prepare(`
+      INSERT INTO config_proposals
+        (proposal_id, config_key, current_value, proposed_value, proposed_by, proposed_at,
+         status, decided_by, decided_at, rejection_reason)
+      VALUES
+        (@proposal_id, @config_key, @current_value, @proposed_value, @proposed_by, @proposed_at,
+         @status, @decided_by, @decided_at, @rejection_reason)
+    `).run(proposal);
+  }
+
+  updateProposalStatus(proposalId: string, status: 'ratified' | 'rejected', decidedBy: string, rejectionReason?: string): void {
+    this.db.prepare(`
+      UPDATE config_proposals
+      SET status = @status, decided_by = @decided_by, decided_at = @decided_at, rejection_reason = @rejection_reason
+      WHERE proposal_id = @proposal_id
+    `).run({
+      proposal_id: proposalId,
+      status,
+      decided_by: decidedBy,
+      decided_at: new Date().toISOString(),
+      rejection_reason: rejectionReason ?? null,
+    });
+  }
+
+  getPendingProposals(): DbConfigProposal[] {
+    return this.db.prepare(
+      "SELECT * FROM config_proposals WHERE status = 'pending' ORDER BY proposed_at ASC"
+    ).all() as DbConfigProposal[];
+  }
+
+  getProposal(proposalId: string): DbConfigProposal | undefined {
+    return this.db.prepare('SELECT * FROM config_proposals WHERE proposal_id = ?').get(proposalId) as DbConfigProposal | undefined;
+  }
+
+  // ── Exception Requests ────────────────────────────────────────────────────
+
+  insertException(ex: DbException): void {
+    this.db.prepare(`
+      INSERT INTO exception_requests
+        (exception_id, exception_type, event_id, submitter_id, grounds, scope,
+         disputed_criterion, disputed_match, supporting_docs, status, created_at, updated_at)
+      VALUES
+        (@exception_id, @exception_type, @event_id, @submitter_id, @grounds, @scope,
+         @disputed_criterion, @disputed_match, @supporting_docs, @status, @created_at, @updated_at)
+    `).run({ ...ex, supporting_docs: JSON.stringify(ex.supporting_docs) });
+  }
+
+  getException(exceptionId: string): DbException | undefined {
+    const row = this.db.prepare('SELECT * FROM exception_requests WHERE exception_id = ?').get(exceptionId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, supporting_docs: JSON.parse(String(row.supporting_docs)) } as DbException;
+  }
+
+  listExceptions(filter?: { submitter_id?: string; exception_type?: string }): DbException[] {
+    let sql = 'SELECT * FROM exception_requests WHERE 1=1';
+    const params: unknown[] = [];
+    if (filter?.submitter_id) { sql += ' AND submitter_id = ?'; params.push(filter.submitter_id); }
+    if (filter?.exception_type) { sql += ' AND exception_type = ?'; params.push(filter.exception_type); }
+    sql += ' ORDER BY created_at DESC';
+    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, supporting_docs: JSON.parse(String(row.supporting_docs)) }) as DbException);
+  }
+
+  listExceptionsByEvent(eventId: string): DbException[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM exception_requests WHERE event_id = ? ORDER BY created_at DESC'
+    ).all(eventId) as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, supporting_docs: JSON.parse(String(row.supporting_docs)) }) as DbException);
+  }
+
+  updateExceptionStatus(exceptionId: string, status: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE exception_requests SET status = ?, updated_at = ? WHERE exception_id = ?')
+      .run(status, now, exceptionId);
+  }
+
+  insertExceptionDecision(decision: DbExceptionDecision): void {
+    this.db.prepare(`
+      INSERT INTO exception_decisions
+        (decision_id, exception_id, decided_by, decision, notes, decided_at, step, total_steps_required)
+      VALUES
+        (@decision_id, @exception_id, @decided_by, @decision, @notes, @decided_at, @step, @total_steps_required)
+    `).run(decision);
+  }
+
+  getDecisionsForException(exceptionId: string): DbExceptionDecision[] {
+    return this.db.prepare(
+      'SELECT * FROM exception_decisions WHERE exception_id = ? ORDER BY step ASC'
+    ).all(exceptionId) as DbExceptionDecision[];
+  }
+
+  // ── Upload Records ────────────────────────────────────────────────────────
+
+  insertUploadRecord(record: DbUploadRecord): void {
+    this.db.prepare(`
+      INSERT INTO upload_records (file_id, filename, original_name, mime_type, size_bytes, uploaded_by, created_at)
+      VALUES (@file_id, @filename, @original_name, @mime_type, @size_bytes, @uploaded_by, @created_at)
+    `).run(record);
+  }
+
+  getUploadRecord(fileId: string): DbUploadRecord | undefined {
+    return this.db.prepare('SELECT * FROM upload_records WHERE file_id = ?').get(fileId) as DbUploadRecord | undefined;
+  }
+
+  getUploadRecordByFilename(filename: string): DbUploadRecord | undefined {
+    return this.db.prepare('SELECT * FROM upload_records WHERE filename = ?').get(filename) as DbUploadRecord | undefined;
+  }
+
+  deleteUploadRecord(fileId: string): void {
+    this.db.prepare('DELETE FROM upload_records WHERE file_id = ?').run(fileId);
+  }
+
+  // ── Access Log ────────────────────────────────────────────────────────────
+
+  insertAccessLog(entry: DbAccessLog): void {
+    this.db.prepare(`
+      INSERT INTO access_log (log_id, user_id, action, resource_type, resource_id, ip_address, user_agent, accessed_at)
+      VALUES (@log_id, @user_id, @action, @resource_type, @resource_id, @ip_address, @user_agent, @accessed_at)
+    `).run(entry);
+  }
+
+  getAccessLog(resourceId: string): DbAccessLog[] {
+    return this.db.prepare(
+      'SELECT * FROM access_log WHERE resource_id = ? ORDER BY accessed_at DESC'
+    ).all(resourceId) as DbAccessLog[];
+  }
+
+  getAccessLogByUser(userId: string, since?: string): DbAccessLog[] {
+    if (since) {
+      return this.db.prepare(
+        'SELECT * FROM access_log WHERE user_id = ? AND accessed_at >= ? ORDER BY accessed_at DESC'
+      ).all(userId, since) as DbAccessLog[];
+    }
+    return this.db.prepare(
+      'SELECT * FROM access_log WHERE user_id = ? ORDER BY accessed_at DESC'
+    ).all(userId) as DbAccessLog[];
+  }
+
+  listAccessLog(since?: string, limit?: number): DbAccessLog[] {
+    const maxRows = limit ?? 100;
+    if (since) {
+      return this.db.prepare(
+        'SELECT * FROM access_log WHERE accessed_at >= ? ORDER BY accessed_at DESC LIMIT ?'
+      ).all(since, maxRows) as DbAccessLog[];
+    }
+    return this.db.prepare(
+      'SELECT * FROM access_log ORDER BY accessed_at DESC LIMIT ?'
+    ).all(maxRows) as DbAccessLog[];
+  }
+
+  // ── Draft Rulings ─────────────────────────────────────────────────────────
+
+  saveDraftRuling(reviewId: string, draftReasoning: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE shariah_review_records SET draft_reasoning = ?, draft_updated_at = ? WHERE review_id = ?
+    `).run(draftReasoning, now, reviewId);
+  }
+
+  updateShariahReviewEscalation(reviewId: string, escalationStatus: string): void {
+    this.db.prepare('UPDATE shariah_review_records SET escalation_status = ? WHERE review_id = ?')
+      .run(escalationStatus, reviewId);
+  }
+
+  // ── AAOIFI Standards ──────────────────────────────────────────────────────
+
+  insertStandard(standard: DbStandard): void {
+    this.db.prepare(`
+      INSERT INTO aaoifi_standards (standard_id, code, title, summary, active, created_at)
+      VALUES (@standard_id, @code, @title, @summary, @active, @created_at)
+    `).run({ ...standard, active: standard.active ? 1 : 0 });
+  }
+
+  listStandards(activeOnly = true): DbStandard[] {
+    const sql = activeOnly
+      ? 'SELECT * FROM aaoifi_standards WHERE active = 1 ORDER BY code ASC'
+      : 'SELECT * FROM aaoifi_standards ORDER BY code ASC';
+    const rows = this.db.prepare(sql).all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, active: row.active === 1 }) as DbStandard);
+  }
+
+  getStandard(standardId: string): DbStandard | undefined {
+    const row = this.db.prepare('SELECT * FROM aaoifi_standards WHERE standard_id = ?').get(standardId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbStandard;
+  }
+
+  getStandardByCode(code: string): DbStandard | undefined {
+    const row = this.db.prepare('SELECT * FROM aaoifi_standards WHERE code = ?').get(code) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbStandard;
+  }
+
+  // ── Shariah Reviewers ─────────────────────────────────────────────────────
+
+  insertShariahReviewer(reviewer: DbShariahReviewer): void {
+    this.db.prepare(`
+      INSERT INTO shariah_reviewers
+        (reviewer_id, user_id, full_name, credentials, madhhab, jurisdiction,
+         appointment_period_start, appointment_period_end, active, created_at)
+      VALUES
+        (@reviewer_id, @user_id, @full_name, @credentials, @madhhab, @jurisdiction,
+         @appointment_period_start, @appointment_period_end, @active, @created_at)
+    `).run({ ...reviewer, active: reviewer.active ? 1 : 0 });
+  }
+
+  getShariahReviewerByUserId(userId: string): DbShariahReviewer | undefined {
+    const row = this.db.prepare('SELECT * FROM shariah_reviewers WHERE user_id = ?').get(userId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbShariahReviewer;
+  }
+
+  getShariahReviewerById(reviewerId: string): DbShariahReviewer | undefined {
+    const row = this.db.prepare('SELECT * FROM shariah_reviewers WHERE reviewer_id = ?').get(reviewerId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, active: row.active === 1 } as DbShariahReviewer;
+  }
+
+  listShariahReviewers(activeOnly = false): DbShariahReviewer[] {
+    const sql = activeOnly
+      ? 'SELECT * FROM shariah_reviewers WHERE active = 1 ORDER BY full_name ASC'
+      : 'SELECT * FROM shariah_reviewers ORDER BY full_name ASC';
+    const rows = this.db.prepare(sql).all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, active: row.active === 1 }) as DbShariahReviewer);
+  }
+
+  updateShariahReviewer(reviewerId: string, updates: Partial<Pick<DbShariahReviewer, 'appointment_period_end' | 'active' | 'credentials'>>): void {
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { reviewer_id: reviewerId };
+    if (updates.appointment_period_end !== undefined) { fields.push('appointment_period_end = @appointment_period_end'); params.appointment_period_end = updates.appointment_period_end; }
+    if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+    if (updates.credentials !== undefined) { fields.push('credentials = @credentials'); params.credentials = updates.credentials; }
+    if (fields.length === 0) return;
+    this.db.prepare(`UPDATE shariah_reviewers SET ${fields.join(', ')} WHERE reviewer_id = @reviewer_id`).run(params);
+  }
+
+  // ── Shariah Reviews (list all) ─────────────────────────────────────────────
+
+  listShariahReviews(): unknown[] {
+    return this.db.prepare(
+      `SELECT r.*, c.contract_type
+       FROM shariah_review_records r
+       LEFT JOIN contracts c ON c.contract_id = r.related_contract_id
+       ORDER BY r.timestamp DESC`
+    ).all();
   }
 }

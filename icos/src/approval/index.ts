@@ -75,10 +75,12 @@ export interface TransitionParams {
   supportingDocuments?: string[];
   conditions?: string[];
   priorAuditEvents?: ApprovalAuditEvent[];
+  authorityMatrixOverride?: Record<string, OrgRole>;
 }
 
 export function transition(params: TransitionParams): ApprovalAuditEvent {
   const { event, newState, reviewer, role, reason, conditions, priorAuditEvents } = params;
+  const authorityMatrix = params.authorityMatrixOverride ?? AUTHORITY_MATRIX;
 
   const allowed = ALLOWED_TRANSITIONS.some(([from, to]) => from === event.approval_state && to === newState);
   if (!allowed) {
@@ -88,7 +90,7 @@ export function transition(params: TransitionParams): ApprovalAuditEvent {
   // Enforce authority matrix: each condition maps to a required role
   if (conditions) {
     for (const condition of conditions) {
-      const requiredRole = AUTHORITY_MATRIX[condition];
+      const requiredRole = authorityMatrix[condition];
       if (requiredRole && role !== requiredRole) {
         throw new AuthorizationError(
           `Condition '${condition}' requires role '${requiredRole}', got '${role}'`,
