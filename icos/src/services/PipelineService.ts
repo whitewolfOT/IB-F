@@ -2,9 +2,13 @@ import { IcosDb } from '../db';
 import { runPipeline, AnyContract, PipelineResult } from '../pipeline';
 import { TransactionDescriptor } from '../classification';
 import { ApprovalState } from '../types';
+import { ConfigService } from '../config';
 
 export class PipelineService {
-  constructor(private readonly db: IcosDb) {}
+  constructor(
+    private readonly db: IcosDb,
+    private readonly config?: ConfigService,
+  ) {}
 
   run(eventId: string, contract: AnyContract, descriptor: TransactionDescriptor): PipelineResult {
     const stored = this.db.getEvent(eventId);
@@ -14,7 +18,10 @@ export class PipelineService {
     }
 
     const event = stored as unknown as Parameters<typeof runPipeline>[0];
-    const result = runPipeline(event, contract, descriptor);
+    const result = runPipeline(event, contract, descriptor, this.config ? {
+      scoreGate: this.config.getScoreGate(),
+      weights: this.config.getComplianceWeights(),
+    } : undefined);
 
     for (const entry of result.ledgerEntries) {
       this.db.insertLedgerEntry(entry);
