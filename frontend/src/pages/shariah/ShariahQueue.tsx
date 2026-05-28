@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import client from '../../api/client';
@@ -8,16 +8,34 @@ import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
 
 const ShariahQueue: React.FC = () => {
+  const [madhhabFilter, setMadhhabFilter] = useState(false);
+
   const { data: reviews, isLoading, error } = useQuery<Review[]>({
-    queryKey: ['reviews', 'pending'],
-    queryFn: () => client.get<Review[]>('/api/reviews').then((r) => r.data),
+    queryKey: ['reviews', 'pending', madhhabFilter],
+    queryFn: () => {
+      const url = madhhabFilter ? '/api/reviews?madhhab_filter=true' : '/api/reviews';
+      return client.get<Review[]>(url).then((r) => r.data);
+    },
   });
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-900">Shariah Review Queue</h2>
-        <Link to="/shariah/history" className="text-sm text-shariah hover:underline">View History →</Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setMadhhabFilter(f => !f)}
+            className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
+              madhhabFilter
+                ? 'bg-shariah text-white border-shariah'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-shariah hover:text-shariah'
+            }`}
+            title="Filter by my madhhab preference"
+          >
+            {madhhabFilter ? 'Madhhab filter: ON' : 'Filter by madhhab'}
+          </button>
+          <Link to="/shariah/history" className="text-sm text-shariah hover:underline">View History →</Link>
+        </div>
       </div>
 
       {isLoading ? (

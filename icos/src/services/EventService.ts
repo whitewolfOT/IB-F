@@ -1,4 +1,4 @@
-import { IcosDb } from '../db';
+import { IIcosDb } from '../db/interface';
 import { createEvent, CreateEventParams, IcosEvent } from '../events';
 import { transition, TransitionParams, ApprovalAuditEvent } from '../approval';
 import { ApprovalState, OrgRole } from '../types';
@@ -18,7 +18,7 @@ export interface EventWithHistory {
 }
 
 export class EventService {
-  constructor(private readonly db: IcosDb) {}
+  constructor(private readonly db: IIcosDb) {}
 
   create(params: CreateEventParams): IcosEvent {
     const event = createEvent(params);

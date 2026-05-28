@@ -1,4 +1,4 @@
-import { IcosDb } from '../db';
+import { IIcosDb } from '../db/interface';
 import { runPipeline, AnyContract, PipelineResult } from '../pipeline';
 import { TransactionDescriptor } from '../classification';
 import { ApprovalState } from '../types';
@@ -6,7 +6,7 @@ import { ConfigService } from '../config';
 
 export class PipelineService {
   constructor(
-    private readonly db: IcosDb,
+    private readonly db: IIcosDb,
     private readonly config?: ConfigService,
   ) {}
 

@@ -8,6 +8,7 @@ import {
   ComplianceFlag,
   ShariahOverrideEvent,
   createOverride,
+  createShariahReviewStub,
 } from '../shariah';
 
 export class ShariahService {
@@ -134,6 +135,34 @@ export class ShariahService {
       compliance_flag: finalFlag,
       reviewer_expiry_flag: reviewerExpiryFlag || undefined,
     };
+  }
+
+  createReview(contractId: string, reviewerId: string, triggeringReason: string): Record<string, unknown> {
+    const stub = createShariahReviewStub(contractId, triggeringReason);
+    this.db.insertShariahReview({
+      review_id: stub.review_id,
+      related_contract_id: contractId,
+      reviewer_id: reviewerId,
+      triggering_reason: stub.triggering_reason,
+      legal_reasoning: '',
+      ruling_type: null,
+      ruling_confidence: 0,
+      freeze_settlement: false,
+      block_profit_distribution: false,
+      escalation_status: 'pending',
+      digital_signature: '',
+      timestamp: stub.timestamp,
+    });
+    return this.db.getShariahReview(stub.review_id) as Record<string, unknown>;
+  }
+
+  listReviews(contractId?: string): unknown[] {
+    if (contractId) return this.db.getShariahReviewsForContract(contractId);
+    return this.db.listShariahReviews();
+  }
+
+  getReviewerByUserId(userId: string) {
+    return this.db.getShariahReviewerByUserId(userId);
   }
 
   applyOverride(reviewId: string, params: Omit<ShariahOverrideEvent, 'override_id' | 'timestamp'>): ShariahOverrideEvent {

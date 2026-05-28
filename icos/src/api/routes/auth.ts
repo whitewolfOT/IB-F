@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
-import { IcosDb } from '../../db';
+import { IIcosDb } from '../../db/interface';
 import { verifyPassword, signToken, TokenPayload } from '../../auth';
 import { requireAuth } from '../../auth/middleware';
 import { OrgRole } from '../../types';
 
-export function authRouter(db: IcosDb): Router {
+export function authRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.post('/login', async (req: Request, res: Response) => {

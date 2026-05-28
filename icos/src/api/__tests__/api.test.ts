@@ -941,3 +941,82 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('POST /api/reviews', () => {
+  it('creates a new shariah review record', async () => {
+    const { app, db } = makeApp();
+    db.insertContract({
+      contract_id: 'ctr-new-rev-001', contract_type: 'murabaha',
+      status: 'shariah_review', shariah_score: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    const token = makeToken(OrgRole.shariah_reviewer, 'rev-user-001');
+    const res = await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ contract_id: 'ctr-new-rev-001', triggering_reason: 'High-risk counterparty detected' });
+    expect(res.status).toBe(201);
+    expect(res.body.related_contract_id).toBe('ctr-new-rev-001');
+    expect(res.body.review_id).toBeTruthy();
+  });
+
+  it('rejects missing fields with 400', async () => {
+    const { app } = makeApp();
+    const token = makeToken(OrgRole.shariah_reviewer);
+    const res = await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ contract_id: 'ctr-x' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-shariah roles with 403', async () => {
+    const { app } = makeApp();
+    const token = makeToken(OrgRole.operator);
+    const res = await request(app)
+      .post('/api/reviews')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ contract_id: 'ctr-x', triggering_reason: 'test' });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/reviews/:id', () => {
+  it('returns a review record by id', async () => {
+    const { app, db } = makeApp();
+    db.insertContract({
+      contract_id: 'ctr-get-rev-001', contract_type: 'murabaha',
+      status: 'shariah_review', shariah_score: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    db.insertShariahReview({
+      review_id: 'rev-get-001',
+      related_contract_id: 'ctr-get-rev-001',
+      reviewer_id: 'rev-user-001',
+      triggering_reason: 'Testing GET endpoint',
+      legal_reasoning: '',
+      ruling_type: null,
+      ruling_confidence: 0,
+      freeze_settlement: false,
+      block_profit_distribution: false,
+      escalation_status: 'pending',
+      digital_signature: '',
+      timestamp: new Date().toISOString(),
+    });
+    const token = makeToken(OrgRole.shariah_reviewer, 'rev-user-001');
+    const res = await request(app)
+      .get('/api/reviews/rev-get-001')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.review_id).toBe('rev-get-001');
+    expect(res.body.triggering_reason).toBe('Testing GET endpoint');
+  });
+
+  it('returns 404 for unknown review id', async () => {
+    const { app } = makeApp();
+    const res = await request(app)
+      .get('/api/reviews/no-such-id')
+      .set('Authorization', `Bearer ${masterToken()}`);
+    expect(res.status).toBe(404);
+  });
+});

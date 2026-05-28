@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb, DbStandard } from './index';
+import { IIcosDb, DbStandard } from './interface';
 
 export const AAOIFI_SEED_STANDARDS: Omit<DbStandard, 'standard_id' | 'created_at'>[] = [
   { code: 'SS-2',  title: 'Murabaha and Murabaha to the Purchase Orderer', summary: 'Governs cost-plus sale financing structures and disclosure requirements', active: true },
@@ -13,7 +13,7 @@ export const AAOIFI_SEED_STANDARDS: Omit<DbStandard, 'standard_id' | 'created_at
   { code: 'SS-28', title: 'Banking Services', summary: 'Governs Shariah requirements for banking operations', active: true },
 ];
 
-export function seedStandardsIfEmpty(db: IcosDb): void {
+export function seedStandardsIfEmpty(db: IIcosDb): void {
   const existing = db.listStandards(false);
   if (existing.length > 0) return;
 

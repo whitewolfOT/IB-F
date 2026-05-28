@@ -1,11 +1,11 @@
-import { IcosDb } from '../db';
+import { IIcosDb } from '../db/interface';
 import { settle, SettlementAuditRecord, SettlementError } from '../settlement';
 import { PartnershipContract } from '../contracts/schemas';
 import { ShariahReviewRecord } from '../shariah';
 import { ApprovalState } from '../types';
 
 export class SettlementService {
-  constructor(private readonly db: IcosDb) {}
+  constructor(private readonly db: IIcosDb) {}
 
   settle(
     eventId: string,

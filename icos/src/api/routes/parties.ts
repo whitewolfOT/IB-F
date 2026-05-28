@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { IcosDb, DbParty, DbAsset } from '../../db';
+import { IIcosDb, DbParty, DbAsset } from '../../db/interface';
 
-export function partiesRouter(db: IcosDb): Router {
+export function partiesRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.post('/', (req: Request, res: Response) => {
@@ -43,7 +43,7 @@ export function partiesRouter(db: IcosDb): Router {
   return router;
 }
 
-export function assetsRouter(db: IcosDb): Router {
+export function assetsRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.post('/', (req: Request, res: Response) => {

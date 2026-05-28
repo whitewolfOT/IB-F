@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb } from '../../db';
+import { IIcosDb } from '../../db/interface';
 import { requireMaster } from '../../auth/middleware';
 
-export function standardsRouter(db: IcosDb): Router {
+export function standardsRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.get('/', (_req: Request, res: Response) => {

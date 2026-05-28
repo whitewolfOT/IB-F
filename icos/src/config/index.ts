@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { IcosDb, DbConfigEntry, DbConfigProposal } from '../db';
+import { IIcosDb, DbConfigEntry, DbConfigProposal } from '../db/interface';
 import { OrgRole } from '../types';
 
 export const CONFIG_DEFAULTS = {
@@ -21,7 +21,7 @@ export const CONFIG_DEFAULTS = {
   ], type: 'json' as const, description: '5 pilot contract templates' },
 };
 
-export function seedConfigIfEmpty(db: IcosDb): void {
+export function seedConfigIfEmpty(db: IIcosDb): void {
   const existing = db.listConfig();
   if (existing.length > 0) return;
   const now = new Date().toISOString();
@@ -41,7 +41,7 @@ export class ConfigService {
   private cache: Map<string, { value: unknown; expiresAt: number }> = new Map();
   private readonly TTL_MS = 60_000;
 
-  constructor(private readonly db: IcosDb) {}
+  constructor(private readonly db: IIcosDb) {}
 
   private get<T>(key: string): T {
     const cached = this.cache.get(key);

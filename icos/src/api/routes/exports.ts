@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { IcosDb } from '../../db';
+import { IIcosDb } from '../../db/interface';
 import { generateAuditTrailPdf, generateRulingPdf } from '../../pdf';
 import { requireRole } from '../../auth/middleware';
 import { OrgRole } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 
-export function exportsRouter(db: IcosDb): Router {
+export function exportsRouter(db: IIcosDb): Router {
   const router = Router();
 
   router.get('/events/:id/audit-trail',
