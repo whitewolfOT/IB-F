@@ -148,4 +148,52 @@ CREATE TABLE IF NOT EXISTS supporting_instruments (
   data_json             TEXT NOT NULL,
   created_at            TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id       TEXT PRIMARY KEY,
+  email         TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role          TEXT NOT NULL CHECK (role IN (
+    'operator','warehouse_manager','procurement_officer','financial_controller',
+    'risk_officer','compliance_officer','shariah_reviewer','senior_shariah_board',
+    'auditor','settlement_officer','counterparty','system'
+  )),
+  party_id      TEXT REFERENCES parties(party_id),
+  is_master     INTEGER NOT NULL DEFAULT 0 CHECK (is_master IN (0, 1)),
+  active        INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  session_id    TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL REFERENCES users(user_id),
+  token_hash    TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  expires_at    TEXT NOT NULL,
+  revoked       INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS system_config (
+  config_key    TEXT PRIMARY KEY,
+  config_value  TEXT NOT NULL,
+  value_type    TEXT NOT NULL CHECK (value_type IN ('number', 'string', 'json', 'array')),
+  description   TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  updated_by    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS config_proposals (
+  proposal_id    TEXT PRIMARY KEY,
+  config_key     TEXT NOT NULL,
+  current_value  TEXT NOT NULL,
+  proposed_value TEXT NOT NULL,
+  proposed_by    TEXT NOT NULL REFERENCES users(user_id),
+  proposed_at    TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending', 'ratified', 'rejected')),
+  decided_by     TEXT REFERENCES users(user_id),
+  decided_at     TEXT,
+  rejection_reason TEXT
+);
 `;

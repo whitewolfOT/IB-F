@@ -37,6 +37,8 @@ export enum OrgRole {
   senior_shariah_board = 'senior_shariah_board',
   auditor = 'auditor',
   settlement_officer = 'settlement_officer',
+  counterparty = 'counterparty',
+  system = 'system',
 }
 
 export enum ContractType {

@@ -5,6 +5,49 @@ import { IcosEvent } from '../events';
 import { ApprovalAuditEvent } from '../approval';
 import { ComplianceFlag } from '../shariah';
 
+export interface DbUser {
+  user_id: string;
+  email: string;
+  password_hash: string;
+  role: string;
+  party_id: string | null;
+  is_master: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbSession {
+  session_id: string;
+  user_id: string;
+  token_hash: string;
+  created_at: string;
+  expires_at: string;
+  revoked: boolean;
+}
+
+export interface DbConfigEntry {
+  config_key: string;
+  config_value: string;
+  value_type: 'number' | 'string' | 'json' | 'array';
+  description: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface DbConfigProposal {
+  proposal_id: string;
+  config_key: string;
+  current_value: string;
+  proposed_value: string;
+  proposed_by: string;
+  proposed_at: string;
+  status: 'pending' | 'ratified' | 'rejected';
+  decided_by: string | null;
+  decided_at: string | null;
+  rejection_reason: string | null;
+}
+
 export interface DbParty {
   party_id: string;
   name: string;
@@ -369,5 +412,122 @@ export class IcosDb {
       'SELECT * FROM supporting_instruments WHERE linked_contract_id = ? ORDER BY created_at ASC'
     ).all(contractId) as Record<string, unknown>[];
     return rows.map(row => ({ ...row, data: JSON.parse(String(row.data_json)) }));
+  }
+
+  // ── Users ─────────────────────────────────────────────────────────────────
+
+  insertUser(user: DbUser): void {
+    this.db.prepare(`
+      INSERT INTO users (user_id, email, password_hash, role, party_id, is_master, active, created_at, updated_at)
+      VALUES (@user_id, @email, @password_hash, @role, @party_id, @is_master, @active, @created_at, @updated_at)
+    `).run({ ...user, is_master: user.is_master ? 1 : 0, active: user.active ? 1 : 0 });
+  }
+
+  getUserByEmail(email: string): DbUser | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE email = ?').get(email) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, is_master: row.is_master === 1, active: row.active === 1 } as DbUser;
+  }
+
+  getUserById(userId: string): DbUser | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE user_id = ?').get(userId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, is_master: row.is_master === 1, active: row.active === 1 } as DbUser;
+  }
+
+  listUsers(): DbUser[] {
+    const rows = this.db.prepare('SELECT * FROM users ORDER BY created_at ASC').all() as Record<string, unknown>[];
+    return rows.map(row => ({ ...row, is_master: row.is_master === 1, active: row.active === 1 }) as DbUser);
+  }
+
+  updateUser(userId: string, updates: Partial<Pick<DbUser, 'role' | 'active' | 'party_id' | 'updated_at'>>): void {
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { user_id: userId };
+    if (updates.role !== undefined) { fields.push('role = @role'); params.role = updates.role; }
+    if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+    if (updates.party_id !== undefined) { fields.push('party_id = @party_id'); params.party_id = updates.party_id; }
+    if (updates.updated_at !== undefined) { fields.push('updated_at = @updated_at'); params.updated_at = updates.updated_at; }
+    if (fields.length === 0) return;
+    this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE user_id = @user_id`).run(params);
+  }
+
+  // ── Sessions ──────────────────────────────────────────────────────────────
+
+  insertSession(session: DbSession): void {
+    this.db.prepare(`
+      INSERT INTO user_sessions (session_id, user_id, token_hash, created_at, expires_at, revoked)
+      VALUES (@session_id, @user_id, @token_hash, @created_at, @expires_at, 0)
+    `).run(session);
+  }
+
+  revokeSession(sessionId: string): void {
+    this.db.prepare('UPDATE user_sessions SET revoked = 1 WHERE session_id = ?').run(sessionId);
+  }
+
+  revokeSessionByTokenHash(tokenHash: string): void {
+    this.db.prepare('UPDATE user_sessions SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+  }
+
+  getActiveSession(sessionId: string): DbSession | undefined {
+    const now = new Date().toISOString();
+    const row = this.db.prepare(
+      'SELECT * FROM user_sessions WHERE session_id = ? AND revoked = 0 AND expires_at > ?'
+    ).get(sessionId, now) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return { ...row, revoked: row.revoked === 1 } as DbSession;
+  }
+
+  // ── System Config ─────────────────────────────────────────────────────────
+
+  upsertConfig(entry: DbConfigEntry): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO system_config (config_key, config_value, value_type, description, updated_at, updated_by)
+      VALUES (@config_key, @config_value, @value_type, @description, @updated_at, @updated_by)
+    `).run(entry);
+  }
+
+  getConfig(key: string): DbConfigEntry | undefined {
+    return this.db.prepare('SELECT * FROM system_config WHERE config_key = ?').get(key) as DbConfigEntry | undefined;
+  }
+
+  listConfig(): DbConfigEntry[] {
+    return this.db.prepare('SELECT * FROM system_config ORDER BY config_key ASC').all() as DbConfigEntry[];
+  }
+
+  // ── Config Proposals ──────────────────────────────────────────────────────
+
+  insertProposal(proposal: DbConfigProposal): void {
+    this.db.prepare(`
+      INSERT INTO config_proposals
+        (proposal_id, config_key, current_value, proposed_value, proposed_by, proposed_at,
+         status, decided_by, decided_at, rejection_reason)
+      VALUES
+        (@proposal_id, @config_key, @current_value, @proposed_value, @proposed_by, @proposed_at,
+         @status, @decided_by, @decided_at, @rejection_reason)
+    `).run(proposal);
+  }
+
+  updateProposalStatus(proposalId: string, status: 'ratified' | 'rejected', decidedBy: string, rejectionReason?: string): void {
+    this.db.prepare(`
+      UPDATE config_proposals
+      SET status = @status, decided_by = @decided_by, decided_at = @decided_at, rejection_reason = @rejection_reason
+      WHERE proposal_id = @proposal_id
+    `).run({
+      proposal_id: proposalId,
+      status,
+      decided_by: decidedBy,
+      decided_at: new Date().toISOString(),
+      rejection_reason: rejectionReason ?? null,
+    });
+  }
+
+  getPendingProposals(): DbConfigProposal[] {
+    return this.db.prepare(
+      "SELECT * FROM config_proposals WHERE status = 'pending' ORDER BY proposed_at ASC"
+    ).all() as DbConfigProposal[];
+  }
+
+  getProposal(proposalId: string): DbConfigProposal | undefined {
+    return this.db.prepare('SELECT * FROM config_proposals WHERE proposal_id = ?').get(proposalId) as DbConfigProposal | undefined;
   }
 }
