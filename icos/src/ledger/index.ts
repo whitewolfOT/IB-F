@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 import { SubledgerType, ApprovalState } from '../types';
 
 export interface LedgerEntry {
@@ -64,8 +65,32 @@ export function createLedgerEntry(params: LedgerEntryParams): LedgerEntry {
   }
   const entry_id = uuidv4();
   const timestamp = new Date().toISOString();
-  const audit_hash = `${entry_id}:${params.originating_event_id}:${params.amount}:${timestamp}`;
+  const audit_hash = computeAuditHash(entry_id, params.originating_event_id, params.linked_contract_id, params.amount, params.currency, timestamp);
   return { ...params, entry_id, timestamp, audit_hash };
+}
+
+function computeAuditHash(
+  entry_id: string,
+  originating_event_id: string,
+  linked_contract_id: string,
+  amount: number,
+  currency: string,
+  timestamp: string,
+): string {
+  const payload = `${entry_id}|${originating_event_id}|${linked_contract_id}|${amount}|${currency}|${timestamp}`;
+  return createHash('sha256').update(payload).digest('hex');
+}
+
+export function verifyLedgerEntryHash(entry: LedgerEntry): boolean {
+  const expected = computeAuditHash(
+    entry.entry_id,
+    entry.originating_event_id,
+    entry.linked_contract_id,
+    entry.amount,
+    entry.currency,
+    entry.timestamp,
+  );
+  return entry.audit_hash === expected;
 }
 
 export function postTransaction(entries: LedgerEntry[]): void {

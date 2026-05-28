@@ -1,4 +1,4 @@
-import { createLedgerEntry, postTransaction, assertBalance, BalanceViolationError, LedgerConstraintError } from '../index';
+import { createLedgerEntry, postTransaction, assertBalance, verifyLedgerEntryHash, BalanceViolationError, LedgerConstraintError } from '../index';
 import { SubledgerType, ApprovalState } from '../../types';
 
 const baseParams = {
@@ -35,12 +35,29 @@ describe('balance invariant', () => {
 });
 
 describe('createLedgerEntry', () => {
-  it('creates a valid entry with generated id, timestamp and audit_hash', () => {
+  it('creates a valid entry with generated id, timestamp and SHA-256 audit_hash', () => {
     const entry = createLedgerEntry(baseParams);
     expect(entry.entry_id).toBeTruthy();
     expect(entry.timestamp).toBeTruthy();
-    expect(entry.audit_hash).toBeTruthy();
+    expect(entry.audit_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(entry.amount).toBe(1000);
+  });
+
+  it('verifyLedgerEntryHash returns true for an unmodified entry', () => {
+    const entry = createLedgerEntry(baseParams);
+    expect(verifyLedgerEntryHash(entry)).toBe(true);
+  });
+
+  it('verifyLedgerEntryHash returns false when amount is tampered', () => {
+    const entry = createLedgerEntry(baseParams);
+    const tampered = { ...entry, amount: 9999 };
+    expect(verifyLedgerEntryHash(tampered)).toBe(false);
+  });
+
+  it('verifyLedgerEntryHash returns false when audit_hash is altered', () => {
+    const entry = createLedgerEntry(baseParams);
+    const tampered = { ...entry, audit_hash: 'a'.repeat(64) };
+    expect(verifyLedgerEntryHash(tampered)).toBe(false);
   });
 
   it('throws when originating_event_id is missing', () => {

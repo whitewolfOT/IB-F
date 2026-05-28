@@ -1,17 +1,18 @@
-import { IcosDb, DbContract } from '../db';
+import { IIcosDb, DbContract } from '../db/interface';
 import { LedgerEntry } from '../ledger';
 import { ApprovalAuditEvent } from '../approval';
+import { ComplianceFlag } from '../shariah';
 
 export interface ContractDetail {
   contract: DbContract;
   ledgerEntries: LedgerEntry[];
   auditTrail: ApprovalAuditEvent[];
-  complianceFlags: ReturnType<IcosDb['getComplianceFlagsForContract']>;
+  complianceFlags: ComplianceFlag[];
   shariahReviews: unknown[];
 }
 
 export class ContractService {
-  constructor(private readonly db: IcosDb) {}
+  constructor(private readonly db: IIcosDb) {}
 
   register(params: Omit<DbContract, 'created_at' | 'updated_at'>): DbContract {
     const now = new Date().toISOString();
@@ -34,6 +35,10 @@ export class ContractService {
       complianceFlags: this.db.getComplianceFlagsForContract(contractId),
       shariahReviews: this.db.getShariahReviewsForContract(contractId),
     };
+  }
+
+  getLedgerEntries(contractId: string): LedgerEntry[] {
+    return this.db.getLedgerEntriesForContract(contractId);
   }
 
   list(status?: string): DbContract[] {
