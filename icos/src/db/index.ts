@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 import { SCHEMA_SQL, MIGRATION_SQL } from './schema';
 import { LedgerEntry } from '../ledger';
 import { IcosEvent } from '../events';
@@ -147,6 +149,9 @@ export class IcosDb implements IIcosDb {
   private db: Database.Database;
 
   constructor(dbPath: string = ':memory:') {
+    if (dbPath !== ':memory:') {
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    }
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
