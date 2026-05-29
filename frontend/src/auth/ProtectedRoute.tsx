@@ -27,7 +27,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ roles, masterOnly }) =>
     return <Navigate to="/unauthorized" replace />;
   }
 
-  if (roles && roles.length > 0 && !roles.includes(user.role)) {
+  if (roles && roles.length > 0 && !user.is_master && !roles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 

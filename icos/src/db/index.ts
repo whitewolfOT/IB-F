@@ -600,13 +600,15 @@ export class IcosDb implements IIcosDb {
     return rows.map(row => ({ ...row, is_master: row.is_master === 1, active: row.active === 1 }) as DbUser);
   }
 
-  updateUser(userId: string, updates: Partial<Pick<DbUser, 'role' | 'active' | 'party_id' | 'updated_at'>>): void {
+  updateUser(userId: string, updates: Partial<Pick<DbUser, 'role' | 'active' | 'party_id' | 'updated_at' | 'email' | 'password_hash'>>): void {
     const fields: string[] = [];
     const params: Record<string, unknown> = { user_id: userId };
     if (updates.role !== undefined) { fields.push('role = @role'); params.role = updates.role; }
     if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
     if (updates.party_id !== undefined) { fields.push('party_id = @party_id'); params.party_id = updates.party_id; }
     if (updates.updated_at !== undefined) { fields.push('updated_at = @updated_at'); params.updated_at = updates.updated_at; }
+    if (updates.email !== undefined) { fields.push('email = @email'); params.email = updates.email; }
+    if (updates.password_hash !== undefined) { fields.push('password_hash = @password_hash'); params.password_hash = updates.password_hash; }
     if (fields.length === 0) return;
     this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE user_id = @user_id`).run(params);
   }
