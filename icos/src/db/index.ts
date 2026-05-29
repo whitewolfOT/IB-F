@@ -149,38 +149,10 @@ export class IcosDb implements IIcosDb {
   private db: Database.Database;
 
   constructor(dbPath: string = ':memory:') {
-    console.log(`[IcosDb] Initializing database. DB_PATH=${dbPath}`);
-
     if (dbPath !== ':memory:') {
-      const dir = path.dirname(dbPath);
-      const dirExistsBefore = fs.existsSync(dir);
-      console.log(`[IcosDb] Data directory: ${dir} — exists before mkdirSync: ${dirExistsBefore}`);
-
-      try {
-        fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-        const dirExistsAfter = fs.existsSync(dir);
-        console.log(`[IcosDb] mkdirSync completed — exists after: ${dirExistsAfter}`);
-
-        if (dirExistsAfter) {
-          const stat = fs.statSync(dir);
-          console.log(`[IcosDb] Directory permissions: ${(stat.mode & 0o777).toString(8)}, uid=${stat.uid}, gid=${stat.gid}`);
-        }
-      } catch (err) {
-        console.error(`[IcosDb] Failed to create directory ${dir}:`, err);
-        throw err;
-      }
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     }
-
-    try {
-      this.db = new Database(dbPath);
-    } catch (err) {
-      console.error(`[IcosDb] Failed to open database at ${dbPath}:`, err);
-      throw new Error(
-        `SQLite CANTOPEN: unable to open database file at "${dbPath}". ` +
-        `Ensure the volume is mounted and the path is writable. Underlying error: ${(err as Error).message}`
-      );
-    }
-
+    this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.initialize();
