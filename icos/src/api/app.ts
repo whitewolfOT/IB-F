@@ -34,7 +34,7 @@ export function createApp(db: IcosDb) {
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
-      else callback(new Error(`CORS: origin ${origin} not allowed`));
+      else callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
