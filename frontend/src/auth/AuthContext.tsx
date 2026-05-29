@@ -37,8 +37,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     me()
       .then((u) => setUser(u))
-      .catch(() => {
-        localStorage.removeItem('icos_token');
+      .catch((err) => {
+        if (err?.response?.status === 401) {
+          localStorage.removeItem('icos_token');
+        }
       })
       .finally(() => setIsLoading(false));
   }, []);
