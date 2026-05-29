@@ -2,6 +2,7 @@ import React, { useContext } from 'react';
 import { NavLink } from 'react-router-dom';
 import { AuthContext } from '../../auth/AuthContext';
 
+
 interface NavItem {
   to: string;
   label: string;
@@ -28,11 +29,20 @@ const navItems: NavItem[] = [
 ];
 
 const Sidebar: React.FC = () => {
-  const { user } = useContext(AuthContext);
+  const { user, viewAsRole } = useContext(AuthContext);
+
+  const effectiveRole = viewAsRole ?? (user?.is_master ? null : (user?.role ?? null));
 
   const visible = navItems.filter((item) => {
-    if (item.masterOnly) return user?.is_master;
-    if (item.roles && item.roles.length > 0) return item.roles.includes(user?.role ?? '');
+    if (item.masterOnly) {
+      // show master-only items when master has no view-as role active
+      return user?.is_master && effectiveRole === null;
+    }
+    if (item.roles && item.roles.length > 0) {
+      if (effectiveRole !== null) return item.roles.includes(effectiveRole);
+      // master with no view-as: show everything non-masterOnly
+      return user?.is_master ?? false;
+    }
     return true;
   });
 
@@ -41,7 +51,9 @@ const Sidebar: React.FC = () => {
       <div className="px-3 mb-6">
         <span className="text-xs font-mono uppercase tracking-widest text-gray-400">ICOS</span>
         <p className="text-sm font-semibold text-white truncate">{user?.email}</p>
-        <span className="text-xs text-gray-400">{user?.role}{user?.is_master ? ' · master' : ''}</span>
+        <span className="text-xs text-gray-400">
+          {viewAsRole ? `viewing as: ${viewAsRole}` : (user?.role ?? '')}{user?.is_master && !viewAsRole ? ' · master' : ''}
+        </span>
       </div>
       <ul className="flex flex-col gap-0.5">
         {visible.map((item) => (

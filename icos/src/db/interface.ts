@@ -253,7 +253,7 @@ export interface IIcosDb {
   getUserByEmail(email: string): DbUser | undefined;
   getUserById(userId: string): DbUser | undefined;
   listUsers(): DbUser[];
-  updateUser(userId: string, updates: Partial<Pick<DbUser, 'role' | 'active' | 'party_id' | 'updated_at'>>): void;
+  updateUser(userId: string, updates: Partial<Pick<DbUser, 'role' | 'active' | 'party_id' | 'updated_at' | 'email' | 'password_hash'>>): void;
 
   // Sessions
   insertSession(session: DbSession): void;

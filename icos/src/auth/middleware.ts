@@ -38,6 +38,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export function requireRole(...roles: OrgRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }
+    if (req.user.is_master) { next(); return; }  // master bypasses all role checks
     if (!roles.includes(req.user.role)) {
       res.status(403).json({ error: `Requires one of roles: ${roles.join(', ')}` });
       return;
