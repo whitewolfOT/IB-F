@@ -28,6 +28,7 @@ import { authLimiter, apiLimiter, uploadLimiter } from './middleware/rateLimit';
 
 export function createApp(db: IcosDb) {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(express.json());
   app.use(cookieParser());
   const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173').split(',');
