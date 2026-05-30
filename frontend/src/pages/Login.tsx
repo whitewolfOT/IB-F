@@ -1,9 +1,12 @@
 import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AxiosError } from 'axios';
 import { AuthContext } from '../auth/AuthContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
+
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 const Login: React.FC = () => {
   const { login } = useContext(AuthContext);
@@ -24,8 +27,15 @@ const Login: React.FC = () => {
     try {
       await login({ email, password });
       navigate('/dashboard');
-    } catch {
-      setError('Invalid credentials. Please try again.');
+    } catch (err) {
+      const axiosErr = err as AxiosError;
+      if (!axiosErr.response) {
+        setError(`Cannot reach server at ${API_URL}. Check VITE_API_URL and CORS settings.`);
+      } else if (axiosErr.response.status === 401) {
+        setError('Invalid credentials. Please try again.');
+      } else {
+        setError(`Server error ${axiosErr.response.status}. Check Railway logs.`);
+      }
     } finally {
       setLoading(false);
     }
