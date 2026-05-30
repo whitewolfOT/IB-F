@@ -6,67 +6,85 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 
-interface Weights {
-  noRiba: number;
-  noGharar: number;
-  assetBacked: number;
-  ownershipValid: number;
-  properRiskSharing: number;
-}
+// Layer C — Operational Integrity weights
+// These are the ONLY compliance dimensions that may legitimately be weighted.
+// Riba/maysir/gharar are binary gates (Layer A), not scoring dimensions.
+const WEIGHT_KEYS = [
+  'compliance.operational.weight.documentationComplete',
+  'compliance.operational.weight.assetIdentified',
+  'compliance.operational.weight.priceDisclosed',
+  'compliance.operational.weight.deliverySpecified',
+  'compliance.operational.weight.counterpartiesVerified',
+] as const;
 
-const DEFAULT_WEIGHTS: Weights = {
-  noRiba: 30,
-  noGharar: 20,
-  assetBacked: 20,
-  ownershipValid: 15,
-  properRiskSharing: 15,
+const KEY_LABELS: Record<typeof WEIGHT_KEYS[number], string> = {
+  'compliance.operational.weight.documentationComplete': 'Supporting Documents Present',
+  'compliance.operational.weight.assetIdentified':       'Asset Reference Identified',
+  'compliance.operational.weight.priceDisclosed':        'Price / Cost Disclosed',
+  'compliance.operational.weight.deliverySpecified':     'Delivery Date / Location Specified',
+  'compliance.operational.weight.counterpartiesVerified':'Counterparties Verified',
 };
 
-const WEIGHT_LABELS: Record<keyof Weights, string> = {
-  noRiba: 'No Riba (Interest)',
-  noGharar: 'No Gharar (Uncertainty)',
-  assetBacked: 'Asset-Backed',
-  ownershipValid: 'Ownership Valid',
-  properRiskSharing: 'Proper Risk Sharing',
+const KEY_DEFAULTS: Record<typeof WEIGHT_KEYS[number], number> = {
+  'compliance.operational.weight.documentationComplete': 25,
+  'compliance.operational.weight.assetIdentified':       25,
+  'compliance.operational.weight.priceDisclosed':        20,
+  'compliance.operational.weight.deliverySpecified':     20,
+  'compliance.operational.weight.counterpartiesVerified':10,
 };
+
+type WeightKey = typeof WEIGHT_KEYS[number];
 
 const WeightsEditor: React.FC = () => {
   const qc = useQueryClient();
   const { data: config, isLoading } = useConfig();
-  const { mutateAsync: propose, isPending } = useMutation({
-    mutationFn: (weights: Weights) =>
-      createProposal({ key: 'compliance.weights', proposed_value: weights }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'proposals'] }),
-  });
 
-  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
-  const [error, setError] = useState('');
+  const [weights, setWeights] = useState<Record<WeightKey, number>>({ ...KEY_DEFAULTS });
+  const [pendingKey, setPendingKey] = useState<WeightKey | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState('');
 
+  const { mutateAsync: propose, isPending } = useMutation({
+    mutationFn: ({ key, value }: { key: WeightKey; value: number }) =>
+      createProposal({
+        key,
+        proposed_value: value,
+        justification: `Adjust Layer C operational weight: ${KEY_LABELS[key]} → ${value}`,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'proposals'] });
+      setPendingKey(null);
+      setSuccess('Proposal submitted for ratification.');
+      setTimeout(() => setSuccess(''), 4000);
+    },
+    onError: () => setErrors((prev) => ({ ...prev, [pendingKey ?? '']: 'Failed to submit proposal.' })),
+  });
+
   useEffect(() => {
-    if (config?.['compliance.weights']) {
-      setWeights({ ...DEFAULT_WEIGHTS, ...(config['compliance.weights'] as Partial<Weights>) });
+    if (!config) return;
+    const updated: Record<string, number> = {};
+    for (const key of WEIGHT_KEYS) {
+      const val = config[key];
+      if (typeof val === 'number') updated[key] = val;
+    }
+    if (Object.keys(updated).length > 0) {
+      setWeights((prev) => ({ ...prev, ...updated } as Record<WeightKey, number>));
     }
   }, [config]);
 
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
 
-  const handleChange = (key: keyof Weights, val: string) => {
+  const handleChange = (key: WeightKey, val: string) => {
     const num = Math.max(0, Math.min(100, Number(val) || 0));
     setWeights((prev) => ({ ...prev, [key]: num }));
-    setError('');
+    setErrors((prev) => ({ ...prev, [key]: '' }));
     setSuccess('');
   };
 
-  const handlePropose = async () => {
-    if (total !== 100) { setError(`Weights must sum to 100. Current total: ${total}`); return; }
-    setError('');
-    try {
-      await propose(weights);
-      setSuccess('Proposal submitted for ratification.');
-    } catch {
-      setError('Failed to submit proposal.');
-    }
+  const handlePropose = async (key: WeightKey) => {
+    setPendingKey(key);
+    setErrors({});
+    await propose({ key, value: weights[key] });
   };
 
   if (isLoading) return <div className="flex justify-center py-12"><Spinner size="lg" /></div>;
@@ -74,17 +92,24 @@ const WeightsEditor: React.FC = () => {
   return (
     <div className="flex flex-col gap-6 max-w-xl">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Weights Editor</h2>
-        <p className="text-sm text-gray-500 mt-1">Adjust compliance scoring weights. Changes require ratification.</p>
+        <h2 className="text-xl font-bold text-gray-900">Layer C — Operational Weights</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Adjust the weighting of quality metrics in the operational integrity score.
+          Each change is submitted as a proposal requiring master ratification.
+        </p>
+        <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+          <strong>Note:</strong> These weights apply only to Layer C (documentation quality, traceability, disclosure).
+          Riba, maysir, and prohibited industries are binary gates in Layer A and cannot be weighted.
+        </div>
       </div>
 
-      <Card title="Compliance Weights">
-        <div className="flex flex-col gap-5">
-          {(Object.entries(weights) as [keyof Weights, number][]).map(([key, val]) => (
-            <div key={key}>
-              <div className="flex items-center justify-between mb-1">
+      <Card title="Operational Integrity Weights">
+        <div className="flex flex-col gap-6">
+          {WEIGHT_KEYS.map((key) => (
+            <div key={key} className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
                 <label htmlFor={`w-${key}`} className="text-sm font-medium text-gray-700">
-                  {WEIGHT_LABELS[key]}
+                  {KEY_LABELS[key]}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -92,38 +117,50 @@ const WeightsEditor: React.FC = () => {
                     type="number"
                     min={0}
                     max={100}
-                    value={val}
+                    value={weights[key]}
                     onChange={(e) => handleChange(key, e.target.value)}
                     className="w-16 text-right rounded border border-gray-300 px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-master"
                   />
-                  <span className="text-sm text-gray-400">%</span>
+                  <span className="text-sm text-gray-400">pts</span>
                 </div>
               </div>
-              <div className="h-3 rounded-full bg-gray-100">
+
+              <div className="h-2 rounded-full bg-gray-100">
                 <div
-                  className="h-3 rounded-full bg-master transition-all"
-                  style={{ width: `${val}%` }}
+                  className="h-2 rounded-full bg-master transition-all"
+                  style={{ width: `${Math.min(weights[key], 100)}%` }}
                 />
               </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">
+                  Default: {KEY_DEFAULTS[key]} pts
+                </span>
+                <Button
+                  variant="ghost"
+                  loading={isPending && pendingKey === key}
+                  onClick={() => handlePropose(key)}
+                  className="text-xs py-1 px-3"
+                >
+                  Propose
+                </Button>
+              </div>
+              {errors[key] && <p className="text-xs text-danger">{errors[key]}</p>}
             </div>
           ))}
 
-          <div className={`flex items-center justify-between rounded-md p-3 text-sm font-semibold ${total === 100 ? 'bg-green-50 text-green-700' : 'bg-danger-light text-danger'}`}>
-            <span>Total</span>
-            <span className="font-mono">{total} / 100</span>
+          <div className={`flex items-center justify-between rounded-md p-3 text-sm font-semibold ${
+            total === 100 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+          }`}>
+            <span>Current total</span>
+            <span className="font-mono">{total} / 100 {total !== 100 && '⚠ weights imbalanced'}</span>
           </div>
 
-          {error && <div className="bg-danger-light border border-danger/30 rounded p-3 text-sm text-danger">{error}</div>}
-          {success && <div className="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-700">{success}</div>}
-
-          <Button
-            onClick={handlePropose}
-            disabled={total !== 100}
-            loading={isPending}
-            className="bg-master hover:bg-master-dark text-white"
-          >
-            Propose Change
-          </Button>
+          {success && (
+            <div className="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-700">
+              {success}
+            </div>
+          )}
         </div>
       </Card>
     </div>

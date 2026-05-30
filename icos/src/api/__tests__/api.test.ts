@@ -202,8 +202,8 @@ describe('POST /api/events/:id/transition', () => {
         reason: 'submitted',
       });
     const getRes = await request(app).get(`/api/events/${eventId}`).set('Authorization', `Bearer ${masterToken()}`);
-    expect(getRes.body.auditTrail).toHaveLength(1);
-    expect(getRes.body.auditTrail[0].new_state).toBe('submitted');
+    expect(getRes.body.audit_trail).toHaveLength(1);
+    expect(getRes.body.audit_trail[0].new_state).toBe('submitted');
   });
 });
 

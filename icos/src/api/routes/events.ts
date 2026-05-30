@@ -66,7 +66,14 @@ export function eventsRouter(
 
   router.get('/:id', (req: Request, res: Response) => {
     try {
-      res.json(events.get(String(req.params.id)));
+      const result = events.get(String(req.params.id));
+      // Flatten EventWithHistory so frontend can access fields directly
+      res.json({
+        ...result.event,
+        state: result.event.approval_state,
+        audit_trail: result.auditTrail,
+        freezeState: result.freezeState,
+      });
     } catch (err) {
       const msg = (err as Error).message;
       res.status(msg.includes('not found') ? 404 : 500).json({ error: msg });
