@@ -1,4 +1,3 @@
-import axios from 'axios';
 import client from './client';
 
 export interface LoginPayload {
@@ -25,6 +24,4 @@ export const logout = () =>
   client.post('/api/auth/logout').then((r) => r.data);
 
 export const me = () =>
-  axios.get<AuthUser>(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/api/auth/me`, {
-    withCredentials: true,
-  }).then((r) => r.data);
+  client.get<AuthUser>('/api/auth/me').then((r) => r.data);
