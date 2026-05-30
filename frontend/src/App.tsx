@@ -72,7 +72,7 @@ function App() {
             <Route element={<ProtectedRoute roles={['financial_controller']} />}>
               <Route path="/financial" element={<FinancialQueue />} />
               <Route path="/financial/:eventId" element={<FinancialReview />} />
-              <Route path="/ledger/:contractId" element={<LedgerView />} />
+              <Route path="/ledger" element={<LedgerView />} />
             </Route>
 
             {/* Shariah */}

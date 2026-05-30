@@ -131,9 +131,11 @@ export class IcosDb {
     return this.events.get(eventId);
   }
 
-  listEvents(linkedContractId?: string): Record<string, unknown>[] {
-    const all = Array.from(this.events.values()) as Record<string, unknown>[];
-    return linkedContractId ? all.filter(e => e.linked_contract_id === linkedContractId) : all;
+  listEvents(linkedContractId?: string, createdBy?: string): Record<string, unknown>[] {
+    let all = Array.from(this.events.values()) as Record<string, unknown>[];
+    if (linkedContractId) all = all.filter(e => e.linked_contract_id === linkedContractId);
+    if (createdBy) all = all.filter(e => e.created_by === createdBy);
+    return all;
   }
 
   // ── Ledger Entries ────────────────────────────────────────────────────────

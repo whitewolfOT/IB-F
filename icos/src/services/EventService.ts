@@ -72,7 +72,7 @@ export class EventService {
     return { event, auditTrail, freezeState };
   }
 
-  list(linkedContractId?: string): Record<string, unknown>[] {
-    return this.db.listEvents(linkedContractId);
+  list(linkedContractId?: string, createdBy?: string): Record<string, unknown>[] {
+    return this.db.listEvents(linkedContractId, createdBy);
   }
 }

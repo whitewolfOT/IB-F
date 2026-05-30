@@ -40,6 +40,7 @@ export const OrgRole = {
   auditor: 'auditor',
   settlement_officer: 'settlement_officer',
   counterparty: 'counterparty',
+  client: 'client',
   system: 'system',
 } as const;
 export type OrgRole = (typeof OrgRole)[keyof typeof OrgRole];

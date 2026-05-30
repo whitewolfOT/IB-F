@@ -176,7 +176,7 @@ export interface IIcosDb {
   insertEvent(event: IcosEvent): void;
   updateEventState(eventId: string, approvalState: string): void;
   getEvent(eventId: string): (Omit<IcosEvent, 'counterparties'> & { counterparties: string[] }) | undefined;
-  listEvents(linkedContractId?: string): Record<string, unknown>[];
+  listEvents(linkedContractId?: string, createdBy?: string): Record<string, unknown>[];
 
   // Ledger Entries
   insertLedgerEntry(entry: LedgerEntry): void;

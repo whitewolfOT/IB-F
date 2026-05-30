@@ -20,6 +20,7 @@ const ROLE_LABELS: Record<string, string> = {
   auditor: 'Auditor',
   settlement_officer: 'Settlement Officer',
   counterparty: 'Counterparty',
+  client: 'Client',
 };
 
 const Topbar: React.FC<TopbarProps> = ({ title = 'ICOS' }) => {

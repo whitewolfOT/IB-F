@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   role: string;
   is_master: boolean;
+  party_id: string | null;
 }
 
 export interface LoginResponse {

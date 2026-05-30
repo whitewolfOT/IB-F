@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT NOT NULL CHECK (role IN (
     'operator','warehouse_manager','procurement_officer','financial_controller',
     'risk_officer','compliance_officer','shariah_reviewer','senior_shariah_board',
-    'auditor','settlement_officer','counterparty','system'
+    'auditor','settlement_officer','counterparty','client','system'
   )),
   party_id      TEXT REFERENCES parties(party_id),
   is_master     INTEGER NOT NULL DEFAULT 0 CHECK (is_master IN (0, 1)),
@@ -288,4 +288,6 @@ CREATE TABLE IF NOT EXISTS access_log (
 export const MIGRATION_SQL = [
   'ALTER TABLE shariah_review_records ADD COLUMN draft_reasoning TEXT',
   'ALTER TABLE shariah_review_records ADD COLUMN draft_updated_at TEXT',
+  // Add 'client' role to users table CHECK constraint for existing DBs
+  "PRAGMA writable_schema = 1; UPDATE sqlite_master SET sql = REPLACE(sql, '''counterparty'',''system''', '''counterparty'',''client'',''system''') WHERE name = 'users' AND type = 'table'; PRAGMA writable_schema = 0;",
 ];

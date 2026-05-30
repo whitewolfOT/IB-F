@@ -45,7 +45,7 @@ export function eventsRouter(
         quantity: Number(quantity ?? 0),
         unit: String(unit ?? ''),
         supporting_documents: (supporting_documents as string[]) ?? [],
-        created_by: String(created_by ?? ''),
+        created_by: req.user!.user_id,
       });
       res.status(201).json(event);
     } catch (err) {
@@ -56,7 +56,9 @@ export function eventsRouter(
   router.get('/', (req: Request, res: Response) => {
     try {
       const contractId = typeof req.query.contract_id === 'string' ? req.query.contract_id : undefined;
-      res.json(events.list(contractId));
+      // Client-role users only see their own events
+      const createdBy = req.user?.role === 'client' ? req.user.user_id : undefined;
+      res.json(events.list(contractId, createdBy));
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

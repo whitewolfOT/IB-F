@@ -38,6 +38,7 @@ export enum OrgRole {
   auditor = 'auditor',
   settlement_officer = 'settlement_officer',
   counterparty = 'counterparty',
+  client = 'client',
   system = 'system',
 }
 

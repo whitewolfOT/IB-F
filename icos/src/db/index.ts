@@ -280,13 +280,13 @@ export class IcosDb implements IIcosDb {
     return { ...row, counterparties } as Omit<IcosEvent, 'counterparties'> & { counterparties: string[] };
   }
 
-  listEvents(linkedContractId?: string): Record<string, unknown>[] {
-    if (linkedContractId) {
-      return this.db.prepare(
-        'SELECT * FROM events WHERE linked_contract_id = ? ORDER BY timestamp DESC'
-      ).all(linkedContractId) as Record<string, unknown>[];
-    }
-    return this.db.prepare('SELECT * FROM events ORDER BY timestamp DESC').all() as Record<string, unknown>[];
+  listEvents(linkedContractId?: string, createdBy?: string): Record<string, unknown>[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (linkedContractId) { conditions.push('linked_contract_id = ?'); params.push(linkedContractId); }
+    if (createdBy) { conditions.push('created_by = ?'); params.push(createdBy); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    return this.db.prepare(`SELECT * FROM events ${where} ORDER BY timestamp DESC`).all(...params) as Record<string, unknown>[];
   }
 
   // ── Ledger Entries ────────────────────────────────────────────────────────

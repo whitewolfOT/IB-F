@@ -61,7 +61,7 @@ export function authRouter(db: IIcosDb): Router {
       // still return token in body for API clients
       res.json({
         token,
-        user: { user_id: user.user_id, email: user.email, role: user.role, is_master: user.is_master },
+        user: { user_id: user.user_id, email: user.email, role: user.role, is_master: user.is_master, party_id: user.party_id },
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
