@@ -31,7 +31,9 @@ export function createApp(db: IcosDb) {
   app.set('trust proxy', 1);
   app.use(express.json());
   app.use(cookieParser());
-  const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173').split(',');
+  const ALLOWED_ORIGINS = (
+    process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173,https://ib-f-27al.vercel.app'
+  ).split(',').map((s) => s.trim());
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
