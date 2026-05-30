@@ -26,7 +26,5 @@ export const logout = () =>
 
 export const me = () =>
   axios.get<AuthUser>(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/api/auth/me`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem('icos_token') ?? ''}`,
-    },
+    withCredentials: true,
   }).then((r) => r.data);

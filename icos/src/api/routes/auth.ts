@@ -50,10 +50,11 @@ export function authRouter(db: IIcosDb): Router {
         expires_at: expiresAt.toISOString(),
         revoked: false,
       });
+      const crossOrigin = process.env.NODE_ENV === 'production';
       res.cookie('icos_token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: crossOrigin,
+        sameSite: crossOrigin ? 'none' : 'lax',
         maxAge: 8 * 60 * 60 * 1000,
         path: '/',
       });
@@ -78,10 +79,11 @@ export function authRouter(db: IIcosDb): Router {
         const tokenHash = createHash('sha256').update(rawToken).digest('hex');
         db.revokeSessionByTokenHash(tokenHash);
       }
+      const crossOrigin = process.env.NODE_ENV === 'production';
       res.clearCookie('icos_token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: crossOrigin,
+        sameSite: crossOrigin ? 'none' : 'lax',
         path: '/',
       });
       res.json({ ok: true });

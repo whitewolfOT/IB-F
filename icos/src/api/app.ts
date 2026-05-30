@@ -44,12 +44,6 @@ export function createApp(db: IcosDb) {
     allowedHeaders: ['Content-Type', 'Authorization'],
   }));
 
-  // Temporary: log auth header presence to diagnose 401 on /api/events
-  app.use('/api', (req, _res, next) => {
-    console.log(`[REQ] ${req.method} ${req.path} auth=${req.headers.authorization ? 'present' : 'MISSING'}`);
-    next();
-  });
-
   // Rate limiters
   app.use('/api/auth', authLimiter);
   app.use('/api', apiLimiter);
