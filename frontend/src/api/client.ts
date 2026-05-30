@@ -16,8 +16,9 @@ client.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('icos_token');
-      window.location.href = '/login';
+      // Signal AuthContext to clear state and let React Router redirect.
+      // Using a custom event avoids a hard browser navigation that breaks SPA state.
+      window.dispatchEvent(new CustomEvent('icos:auth:expired'));
     }
     return Promise.reject(error);
   },
