@@ -8,8 +8,7 @@ import { OrgRole } from '../../types';
 
 // Who can propose each config key prefix
 const PROPOSAL_ROLES: Record<string, OrgRole[]> = {
-  'compliance.weight': [OrgRole.shariah_reviewer, OrgRole.senior_shariah_board],
-  'compliance.scoreGate': [OrgRole.compliance_officer],
+  'compliance.operational.weight': [OrgRole.compliance_officer, OrgRole.senior_shariah_board],
   'approval.authorityMatrix': [OrgRole.financial_controller],
   'approval.murabahaThreshold': [OrgRole.financial_controller],
   'prohibited.industries': [OrgRole.compliance_officer, OrgRole.shariah_reviewer],

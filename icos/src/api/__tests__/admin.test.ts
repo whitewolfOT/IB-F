@@ -70,7 +70,7 @@ describe('POST /api/admin/config/proposals', () => {
     expect(res.body.proposal_id).toBeTruthy();
   });
 
-  it('compliance officer gets 403 proposing compliance.weight.noRiba', async () => {
+  it('compliance officer gets 403 proposing approval.murabahaThreshold', async () => {
     const { app, db } = makeApp();
     const userId = await createUser(db, OrgRole.compliance_officer);
     const token = makeToken(OrgRole.compliance_officer, userId);
@@ -78,9 +78,9 @@ describe('POST /api/admin/config/proposals', () => {
       .post('/api/admin/config/proposals')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        config_key: 'compliance.weight.noRiba',
-        proposed_value: 50,
-        justification: 'Increase riba weight',
+        config_key: 'approval.murabahaThreshold',
+        proposed_value: 1000000,
+        justification: 'Raise murabaha threshold',
       });
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/cannot propose/);
@@ -107,9 +107,9 @@ describe('POST /api/admin/config/proposals/:id/ratify', () => {
       .post('/api/admin/config/proposals')
       .set('Authorization', `Bearer ${makeToken(OrgRole.compliance_officer, userId)}`)
       .send({
-        config_key: 'compliance.scoreGate',
-        proposed_value: 50,
-        justification: 'Increase gate',
+        config_key: 'compliance.operational.weight.documentationComplete',
+        proposed_value: 30,
+        justification: 'Increase documentation weight',
       });
     const proposalId = propRes.body.proposal_id;
     const res = await request(app)
@@ -128,9 +128,9 @@ describe('POST /api/admin/config/proposals/:id/ratify', () => {
       .post('/api/admin/config/proposals')
       .set('Authorization', `Bearer ${makeToken(OrgRole.compliance_officer, userId)}`)
       .send({
-        config_key: 'compliance.scoreGate',
-        proposed_value: 55,
-        justification: 'Increase gate to 55',
+        config_key: 'compliance.operational.weight.documentationComplete',
+        proposed_value: 30,
+        justification: 'Increase documentation weight to 30',
       });
     expect(propRes.status).toBe(201);
     const proposalId = propRes.body.proposal_id;
@@ -142,12 +142,12 @@ describe('POST /api/admin/config/proposals/:id/ratify', () => {
       .send({});
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.new_value).toBe(55);
+    expect(res.body.new_value).toBe(30);
 
     // Verify config updated
     const cfgRes = await request(app).get('/api/admin/config').set('Authorization', `Bearer ${masterToken()}`);
-    const scoreGate = cfgRes.body.find((e: { key: string }) => e.key === 'compliance.scoreGate');
-    expect(scoreGate.value).toBe(55);
+    const docWeight = cfgRes.body.find((e: { key: string }) => e.key === 'compliance.operational.weight.documentationComplete');
+    expect(docWeight.value).toBe(30);
   });
 });
 
@@ -160,7 +160,7 @@ describe('POST /api/admin/config/proposals/:id/reject', () => {
       .post('/api/admin/config/proposals')
       .set('Authorization', `Bearer ${makeToken(OrgRole.compliance_officer, userId)}`)
       .send({
-        config_key: 'compliance.scoreGate',
+        config_key: 'compliance.operational.weight.documentationComplete',
         proposed_value: 99,
         justification: 'Way too high',
       });
@@ -169,14 +169,14 @@ describe('POST /api/admin/config/proposals/:id/reject', () => {
     const res = await request(app)
       .post(`/api/admin/config/proposals/${proposalId}/reject`)
       .set('Authorization', `Bearer ${masterToken()}`)
-      .send({ reason: 'Score gate 99 is unreasonably high' });
+      .send({ reason: 'Documentation weight 99 is unreasonably high' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
 
-    // Config should remain unchanged (still 40)
+    // Config should remain unchanged (still 25)
     const cfgRes = await request(app).get('/api/admin/config').set('Authorization', `Bearer ${masterToken()}`);
-    const scoreGate = cfgRes.body.find((e: { key: string }) => e.key === 'compliance.scoreGate');
-    expect(scoreGate.value).toBe(40);
+    const docWeight = cfgRes.body.find((e: { key: string }) => e.key === 'compliance.operational.weight.documentationComplete');
+    expect(docWeight.value).toBe(25);
   });
 });
 

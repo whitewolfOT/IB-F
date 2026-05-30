@@ -240,19 +240,21 @@ describe('runPipeline - salam flow', () => {
   });
 });
 
-describe('runPipeline - compliance scoring gate', () => {
-  it('valid murabaha result includes complianceScore with score 100', () => {
+describe('runPipeline - compliance assessment', () => {
+  it('valid murabaha result includes complianceAssessment with shariah gate passing', () => {
     const event = makeApprovedEvent(validMurabaha.contract_id);
     const result = runPipeline(event, validMurabaha, murabahaDescriptor);
-    expect(result.complianceScore).toBeDefined();
-    expect(result.complianceScore.score).toBe(100);
-    expect(result.complianceScore.band).toBe('Fully Compliant');
+    expect(result.complianceAssessment).toBeDefined();
+    expect(result.complianceAssessment.shariahGate.status).toBe('pass');
+    expect(result.complianceAssessment.shariahGate.nullifiers).toHaveLength(0);
+    // score 75: no docs (0) + asset (25) + price (20) + delivery (20) + counterparties (10)
+    expect(result.complianceAssessment.operationalIntegrity.score).toBe(75);
     expect(result.ribaViolations).toHaveLength(0);
     expect(result.ghararViolations).toHaveLength(0);
     expect(result.maysirViolations).toHaveLength(0);
   });
 
-  it('compliance gate: partnership with guaranteed_return and no asset reference → score < 40 → PipelineError', () => {
+  it('compliance gate: partnership with guaranteed_return → shariah gate fails → PipelineError', () => {
     const event = createEvent({
       location: 'Test',
       event_type: 'partnership_funding',

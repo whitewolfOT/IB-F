@@ -24,7 +24,13 @@ import {
 import { murabahaProfit, leaseRevenue, riskReserveRequirement } from '../formulas';
 import { createShariahReviewStub, ShariahReviewRecord } from '../shariah';
 import { detectFromContract } from '../validation';
-import { scoreCompliance, scoreComplianceWithWeights, ComplianceScore } from '../compliance';
+import {
+  checkShariahGate, ShariahGateInput,
+  analyzePurification,
+  scoreOperationalIntegrity, OperationalIntegrityInput,
+  ComplianceAssessment,
+  DEFAULT_OPERATIONAL_WEIGHTS,
+} from '../compliance';
 
 export type AnyContract =
   | SaleContract
@@ -43,8 +49,7 @@ export class PipelineError extends Error {
 }
 
 export interface PipelineConfig {
-  scoreGate?: number;
-  weights?: { noRiba: number; noGharar: number; assetBacked: number; ownershipValid: number; properRiskSharing: number };
+  operationalWeights?: Partial<typeof DEFAULT_OPERATIONAL_WEIGHTS>;
 }
 
 export interface PipelineResult {
@@ -52,7 +57,7 @@ export interface PipelineResult {
   ledgerEntries: LedgerEntry[];
   violations: string[];
   shariahReviewStub: ShariahReviewRecord | null;
-  complianceScore: ComplianceScore;
+  complianceAssessment: ComplianceAssessment;
   ribaViolations: string[];
   ghararViolations: string[];
   maysirViolations: string[];
@@ -88,36 +93,14 @@ export function runPipeline(
     throw new PipelineError(`Classification violations: ${classification.violations.join(', ')}`);
   }
 
-  // Step 1.5: Compliance scoring gate (spec §12) — runs before contract validation
+  // Step 1.5: Three-layer compliance assessment (spec §12)
   const { ribaViolations, ghararViolations, maysirViolations } = detectFromContract(
     contract as Parameters<typeof detectFromContract>[0],
   );
-  const complianceInput = {
-    noRiba: ribaViolations.length === 0,
-    noGharar: ghararViolations.length === 0,
-    assetBacked: Boolean(event.asset_reference),
-    ownershipValid:
-      classification.contract_type !== 'murabaha' ||
-      (contract as SaleContract).possession_status === 'in_possession',
-    properRiskSharing:
-      !['mudaraba', 'musharaka'].includes(classification.contract_type) ||
-      !(contract as PartnershipContract).guaranteed_return,
-  };
-  const complianceScore = config?.weights
-    ? scoreComplianceWithWeights(complianceInput, config.weights)
-    : scoreCompliance(complianceInput);
-  const scoreGate = config?.scoreGate ?? 40;
-  if (complianceScore.score < scoreGate) {
-    throw new PipelineError(
-      `Compliance score ${complianceScore.score} is Non-Compliant: ${complianceScore.band}. ` +
-      `Riba: [${ribaViolations.join('; ')}]; ` +
-      `Gharar: [${ghararViolations.join('; ')}]; ` +
-      `Maysir: [${maysirViolations.join('; ')}]`,
-    );
-  }
 
-  // Step 1.6: Prohibited industry check (spec §11A / §6 taxonomy)
   const ct = classification.contract_type;
+
+  // Resolve industry description for prohibited-industry check (part of Layer A)
   let industryDesc: string | undefined;
   if (ct === 'murabaha' || ct === 'spot_sale' || ct === 'deferred_payment_sale') {
     industryDesc = (contract as SaleContract).asset_description;
@@ -130,12 +113,69 @@ export function runPipeline(
   } else if (ct === 'wakala' || ct === 'wakala_bi_al_istithmar') {
     industryDesc = (contract as AgencyContract).authorized_scope;
   }
-  if (industryDesc) {
-    const industryCheck = validateProhibitedIndustry(industryDesc);
-    if (!industryCheck.valid) {
-      throw new PipelineError(`Prohibited industry: ${industryCheck.violations.join('; ')}`);
-    }
+  const prohibitedIndustry = industryDesc
+    ? !validateProhibitedIndustry(industryDesc).valid
+    : false;
+
+  // Layer A — Shariah Validity Gate (hard prohibitions, binary)
+  const shariahGateInput: ShariahGateInput = {
+    ribaViolations,
+    maysirViolations,
+    ghararViolations,
+    prohibitedIndustry,
+    ownershipBeforeSale:
+      ct !== 'murabaha' ||
+      (contract as SaleContract).possession_status === 'in_possession',
+    genuineRiskSharing:
+      !['mudaraba', 'musharaka'].includes(ct) ||
+      !(contract as PartnershipContract).guaranteed_return,
+  };
+  const shariahGate = checkShariahGate(shariahGateInput);
+
+  const shariahPassed = shariahGate.status !== 'fail';
+  if (!shariahPassed) {
+    throw new PipelineError(
+      `Shariah validity gate failed — ${shariahGate.nullifiers.join('; ')}`,
+    );
   }
+
+  // Layer B — Purification Analysis (informational at origination)
+  const contractAmount: number =
+    (contract as SaleContract).sale_price ??
+    (contract as PartnershipContract & { total_capital?: number }).total_capital ??
+    (contract as QardContract).principal_amount ??
+    (contract as SalamContract).payment_amount ??
+    event.quantity;
+  const purification = analyzePurification({
+    totalContractAmount: contractAmount,
+    impureIncomeEstimate: 0,   // zero at clean contract origination
+    methodology: 'AAOIFI',
+  });
+
+  // Layer C — Operational Integrity Score (weighted quality metrics)
+  const operationalInput: OperationalIntegrityInput = {
+    documentationComplete: (event.supporting_documents?.length ?? 0) > 0,
+    assetIdentified: Boolean(event.asset_reference),
+    priceDisclosed:
+      ct !== 'murabaha' ||
+      Boolean((contract as SaleContract).sale_price && (contract as SaleContract).purchase_cost),
+    deliverySpecified: Boolean(
+      (contract as unknown as Record<string, unknown>).delivery_date ||
+      (contract as unknown as Record<string, unknown>).delivery_location,
+    ),
+    counterpartiesVerified: event.counterparties.length > 0,
+  };
+  const operationalIntegrity = scoreOperationalIntegrity(
+    operationalInput,
+    config?.operationalWeights,
+  );
+
+  const complianceAssessment: ComplianceAssessment = {
+    shariahGate,
+    purification,
+    operationalIntegrity,
+    passed: shariahPassed,
+  };
 
   // Step 2: Validate contract and produce ledger entries
   const base = baseEntryFields(event);
@@ -300,5 +340,5 @@ export function runPipeline(
         )
       : null;
 
-  return { classification, ledgerEntries, violations, shariahReviewStub, complianceScore, ribaViolations, ghararViolations, maysirViolations, leaseRevenueMetrics: ijarahLeaseMetrics, riskReserve: partnershipRiskReserve };
+  return { classification, ledgerEntries, violations, shariahReviewStub, complianceAssessment, ribaViolations, ghararViolations, maysirViolations, leaseRevenueMetrics: ijarahLeaseMetrics, riskReserve: partnershipRiskReserve };
 }

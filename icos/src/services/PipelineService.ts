@@ -19,8 +19,7 @@ export class PipelineService {
 
     const event = stored as unknown as Parameters<typeof runPipeline>[0];
     const result = runPipeline(event, contract, descriptor, this.config ? {
-      scoreGate: this.config.getScoreGate(),
-      weights: this.config.getComplianceWeights(),
+      operationalWeights: this.config.getOperationalWeights(),
     } : undefined);
 
     for (const entry of result.ledgerEntries) {

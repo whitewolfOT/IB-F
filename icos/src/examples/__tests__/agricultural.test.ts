@@ -423,7 +423,7 @@ describe('§15 Agricultural: Mudaraba — Agricultural Cooperative', () => {
     });
     advanceToApproved(events, event2.event_id);
     expect(() => pipeline.run(event2.event_id, invalidMudaraba, descriptor))
-      .toThrow(/guaranteed return is prohibited/);
+      .toThrow(/guaranteed return/);
 
     db.close();
   });

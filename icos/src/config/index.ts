@@ -3,12 +3,12 @@ import { IIcosDb, DbConfigEntry, DbConfigProposal } from '../db/interface';
 import { OrgRole } from '../types';
 
 export const CONFIG_DEFAULTS = {
-  'compliance.weight.noRiba':            { value: 40,      type: 'number' as const, description: 'Weight for no-riba criterion (0–100)' },
-  'compliance.weight.noGharar':          { value: 25,      type: 'number' as const, description: 'Weight for no-gharar criterion (0–100)' },
-  'compliance.weight.assetBacked':       { value: 15,      type: 'number' as const, description: 'Weight for asset-backed criterion (0–100)' },
-  'compliance.weight.ownershipValid':    { value: 10,      type: 'number' as const, description: 'Weight for ownership-valid criterion (0–100)' },
-  'compliance.weight.properRiskSharing': { value: 10,      type: 'number' as const, description: 'Weight for risk-sharing criterion (0–100)' },
-  'compliance.scoreGate':                { value: 40,      type: 'number' as const, description: 'Pipeline blocked if score falls below this value' },
+  // Layer C — Operational Integrity weights (these CAN legitimately be adjusted)
+  'compliance.operational.weight.documentationComplete': { value: 25, type: 'number' as const, description: 'Weight: supporting documents present (Layer C)' },
+  'compliance.operational.weight.assetIdentified':       { value: 25, type: 'number' as const, description: 'Weight: asset reference populated (Layer C)' },
+  'compliance.operational.weight.priceDisclosed':        { value: 20, type: 'number' as const, description: 'Weight: cost and markup fully disclosed (Layer C)' },
+  'compliance.operational.weight.deliverySpecified':     { value: 20, type: 'number' as const, description: 'Weight: delivery date/location specified (Layer C)' },
+  'compliance.operational.weight.counterpartiesVerified':{ value: 10, type: 'number' as const, description: 'Weight: counterparties have verified party records (Layer C)' },
   'approval.murabahaThreshold':          { value: 500000,  type: 'number' as const, description: 'USD value above which murabaha requires 3-signature approval' },
   'approval.authorityMatrix':            { value: { small_inventory_transfer: 'warehouse_manager', large_capital_deployment: 'financial_controller', novel_contract_structure: 'senior_shariah_board', high_risk_counterparty: 'risk_officer', zakat_calculation_dispute: 'compliance_officer' }, type: 'json' as const, description: 'Maps condition names to the OrgRole required to approve them' },
   'prohibited.industries':               { value: ['alcohol','gambling','pornography','interest-based banking','fraud','prohibited food','exploitative','speculative financial derivatives','riba','maysir','gharar'], type: 'array' as const, description: 'String-match blocklist applied at event intake' },
@@ -23,17 +23,19 @@ export const CONFIG_DEFAULTS = {
 
 export function seedConfigIfEmpty(db: IIcosDb): void {
   const existing = db.listConfig();
-  if (existing.length > 0) return;
+  const existingKeys = new Set(existing.map((c) => c.config_key));
   const now = new Date().toISOString();
   for (const [key, def] of Object.entries(CONFIG_DEFAULTS)) {
-    db.upsertConfig({
-      config_key: key,
-      config_value: JSON.stringify(def.value),
-      value_type: def.type,
-      description: def.description,
-      updated_at: now,
-      updated_by: 'system',
-    });
+    if (!existingKeys.has(key)) {
+      db.upsertConfig({
+        config_key: key,
+        config_value: JSON.stringify(def.value),
+        value_type: def.type,
+        description: def.description,
+        updated_at: now,
+        updated_by: 'system',
+      });
+    }
   }
 }
 
@@ -55,17 +57,16 @@ export class ConfigService {
 
   private invalidate(key: string): void { this.cache.delete(key); }
 
-  getComplianceWeights() {
+  getOperationalWeights() {
     return {
-      noRiba:            this.get<number>('compliance.weight.noRiba'),
-      noGharar:          this.get<number>('compliance.weight.noGharar'),
-      assetBacked:       this.get<number>('compliance.weight.assetBacked'),
-      ownershipValid:    this.get<number>('compliance.weight.ownershipValid'),
-      properRiskSharing: this.get<number>('compliance.weight.properRiskSharing'),
+      documentationComplete:    this.get<number>('compliance.operational.weight.documentationComplete'),
+      assetIdentified:          this.get<number>('compliance.operational.weight.assetIdentified'),
+      priceDisclosed:           this.get<number>('compliance.operational.weight.priceDisclosed'),
+      deliverySpecified:        this.get<number>('compliance.operational.weight.deliverySpecified'),
+      counterpartiesVerified:   this.get<number>('compliance.operational.weight.counterpartiesVerified'),
     };
   }
 
-  getScoreGate(): number { return this.get<number>('compliance.scoreGate'); }
   getMurabahaThreshold(): number { return this.get<number>('approval.murabahaThreshold'); }
   getAuthorityMatrix(): Record<string, OrgRole> { return this.get('approval.authorityMatrix'); }
   getProhibitedIndustries(): string[] { return this.get<string[]>('prohibited.industries'); }

@@ -30,21 +30,15 @@ describe('ConfigService', () => {
     return { db, svc };
   }
 
-  it('getComplianceWeights returns correct defaults', () => {
+  it('getOperationalWeights returns correct defaults', () => {
     const { svc, db } = makeSvc();
-    expect(svc.getComplianceWeights()).toEqual({
-      noRiba: 40,
-      noGharar: 25,
-      assetBacked: 15,
-      ownershipValid: 10,
-      properRiskSharing: 10,
+    expect(svc.getOperationalWeights()).toEqual({
+      documentationComplete: 25,
+      assetIdentified: 25,
+      priceDisclosed: 20,
+      deliverySpecified: 20,
+      counterpartiesVerified: 10,
     });
-    db.close();
-  });
-
-  it('getScoreGate returns 40', () => {
-    const { svc, db } = makeSvc();
-    expect(svc.getScoreGate()).toBe(40);
     db.close();
   });
 
@@ -79,7 +73,7 @@ describe('ConfigService', () => {
       party_id: null, is_master: false, active: true,
       created_at: now, updated_at: now,
     });
-    const proposalId = svc.propose('compliance.scoreGate', 50, 'user-001');
+    const proposalId = svc.propose('compliance.operational.weight.documentationComplete', 30, 'user-001');
     const proposals = svc.getPendingProposals();
     expect(proposals.length).toBe(1);
     expect(proposals[0].proposal_id).toBe(proposalId);
@@ -87,7 +81,7 @@ describe('ConfigService', () => {
     db.close();
   });
 
-  it('ratify updates config, marks ratified, getScoreGate returns new value', () => {
+  it('ratify updates config, marks ratified, getOperationalWeights reflects new value', () => {
     const { svc, db } = makeSvc();
     const now = new Date().toISOString();
     db.insertUser({
@@ -96,9 +90,9 @@ describe('ConfigService', () => {
       party_id: null, is_master: false, active: true,
       created_at: now, updated_at: now,
     });
-    const proposalId = svc.propose('compliance.scoreGate', 55, 'user-001');
+    const proposalId = svc.propose('compliance.operational.weight.documentationComplete', 30, 'user-001');
     svc.ratify(proposalId, 'user-001');
-    expect(svc.getScoreGate()).toBe(55);
+    expect(svc.getOperationalWeights().documentationComplete).toBe(30);
     const proposal = svc.getProposal(proposalId);
     expect(proposal?.status).toBe('ratified');
     db.close();
@@ -113,9 +107,9 @@ describe('ConfigService', () => {
       party_id: null, is_master: false, active: true,
       created_at: now, updated_at: now,
     });
-    const proposalId = svc.propose('compliance.scoreGate', 99, 'user-001');
+    const proposalId = svc.propose('compliance.operational.weight.documentationComplete', 99, 'user-001');
     svc.reject(proposalId, 'user-001', 'Too high');
-    expect(svc.getScoreGate()).toBe(40); // unchanged
+    expect(svc.getOperationalWeights().documentationComplete).toBe(25); // unchanged
     const proposal = svc.getProposal(proposalId);
     expect(proposal?.status).toBe('rejected');
     db.close();
